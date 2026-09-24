@@ -55,11 +55,13 @@
 
 ```bash
 npm install                # 前端依赖
-npm run tauri dev          # 开发运行
+npm run tauri dev          # 开发运行（会自动启动 Vite 开发服务器，必须用这个跑）
 npm run tauri build        # 发布打包
 npm run build              # 前端类型检查 + 构建
 cd src-tauri && cargo test # Rust 单元测试
 ```
+
+> 注意：debug 版 exe 直接双击运行会显示「无法访问」——它会去连 `http://localhost:1420`（Vite 开发服务器）。开发调试一律用 `npm run tauri dev`；`npm run tauri build` 产出的发布版 exe 内嵌页面、可独立运行。
 
 ## 八、安全红线（强制）
 
