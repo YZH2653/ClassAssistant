@@ -28,16 +28,16 @@
 - [x] 步骤 2：`git checkout -b v1.0.0.0` + `docs/dev-requirements.md` → `docs: 编写开发需求文档`
 - [x] 步骤 3：`docs/tech-design.md` → `docs: 编写技术设计规范`
 - [x] 步骤 4：`docs/execution-steps.md` + `docs/progress.md` + `docs/dev-logs/2026-09-23.md` → `docs: 建立执行步骤与进度记录体系`
-- [ ] 步骤 5：`CLAUDE.md` → `docs: 编写 CLAUDE.md 工作规范`
+- [x] 步骤 5：`CLAUDE.md` → `docs: 编写 CLAUDE.md 工作规范`
 
 ## 四、M2 Tauri 2 项目骨架
 
-- [ ] 步骤 6：Tauri 2 脚手架（React-TS）+ `npm install` + 冒烟出窗口；GNU 工具链失败则走 fallback（MSVC）→ `feat: Tauri 2 项目骨架可编译出窗口`
-- [ ] 步骤 7：Tailwind v4 + 前端目录/UI 骨架（主视图组件 + SettingsPage 表单骨架，静态假数据） → `feat: 前端 UI 骨架与 Tailwind 样式`
+- [x] 步骤 6：Tauri 2 脚手架（React-TS）+ `npm install` + 冒烟出窗口；GNU 工具链失败则走 fallback（MSVC）→ `feat: Tauri 2 项目骨架可编译出窗口`
+- [x] 步骤 7：Tailwind v4 + 前端目录/UI 骨架（主视图组件 + SettingsPage 表单骨架，静态假数据） → `feat: 前端 UI 骨架与 Tailwind 样式`
 
 ## 五、M3 领域核心与 Mock Provider
 
-- [ ] 步骤 8：domain 模型 + 会话状态机纯逻辑 + 单元测试 → `feat: 领域模型与会话状态机（含单测）`
+- [x] 步骤 8：domain 模型 + 会话状态机纯逻辑 + 单元测试 → `feat: 领域模型与会话状态机（含单测）`
 - [ ] 步骤 9：Audio/ASR/Summarizer 三个 Provider trait + Mock 实现 + 工厂与 config 读取 → `feat: 采集/ASR/总结 Provider 抽象与 Mock 实现`
 
 ## 六、M4 存储层与 IPC 编排闭环
