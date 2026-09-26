@@ -1,9 +1,12 @@
 // 模型暂未接入 IPC，步骤 9-11 接入后收紧
 #![allow(dead_code)]
 
+mod asr;
+mod audio;
 mod domain;
 mod error;
 mod session;
+mod summarizer;
 
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
 #[tauri::command]

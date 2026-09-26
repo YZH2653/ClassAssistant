@@ -38,7 +38,7 @@
 ## 五、M3 领域核心与 Mock Provider
 
 - [x] 步骤 8：domain 模型 + 会话状态机纯逻辑 + 单元测试 → `feat: 领域模型与会话状态机（含单测）`
-- [ ] 步骤 9：Audio/ASR/Summarizer 三个 Provider trait + Mock 实现 + 工厂与 config 读取 → `feat: 采集/ASR/总结 Provider 抽象与 Mock 实现`
+- [x] 步骤 9：Audio/ASR/Summarizer 三个 Provider trait + Mock 实现 + 工厂与 config 读取 → `feat: 采集/ASR/总结 Provider 抽象与 Mock 实现`
 
 ## 六、M4 存储层与 IPC 编排闭环
 
