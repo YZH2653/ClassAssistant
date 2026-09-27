@@ -99,7 +99,7 @@ pub fn save_settings(
 }
 
 #[tauri::command]
-pub fn test_provider_connection(
+pub async fn test_provider_connection(
     state: State<'_, AppState>,
     kind: String,
 ) -> Result<TestResult, AppError> {
@@ -119,18 +119,54 @@ pub fn test_provider_connection(
             ok: true,
             message: "Mock 连接正常".to_string(),
         },
-        ProviderKind::Mimo => {
-            if config.api_key.trim().is_empty() {
+        ProviderKind::Mimo => probe_mimo(&config).await,
+    })
+}
+
+// 探测 MiMo 接口连通性
+async fn probe_mimo(config: &crate::domain::settings::ProviderConfig) -> TestResult {
+    let api_key = config.api_key.trim();
+    if api_key.is_empty() {
+        return TestResult {
+            ok: false,
+            message: "请先填写 API Key".to_string(),
+        };
+    }
+    let base_url = crate::asr::mimo::normalize_base_url(&config.base_url);
+    let client = match reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(15))
+        .build()
+    {
+        Ok(client) => client,
+        Err(e) => {
+            return TestResult {
+                ok: false,
+                message: format!("初始化失败：{e}"),
+            }
+        }
+    };
+    match client
+        .get(format!("{base_url}/models"))
+        .bearer_auth(api_key)
+        .send()
+        .await
+    {
+        Ok(response) => {
+            if response.status().is_success() {
                 TestResult {
-                    ok: false,
-                    message: "请先填写 API Key".to_string(),
+                    ok: true,
+                    message: "连接正常".to_string(),
                 }
             } else {
                 TestResult {
                     ok: false,
-                    message: "MiMo 接口尚未接入（等 API 文档）".to_string(),
+                    message: format!("接口返回 {}", response.status()),
                 }
             }
         }
-    })
+        Err(e) => TestResult {
+            ok: false,
+            message: format!("连接失败：{e}"),
+        },
+    }
 }

@@ -23,13 +23,13 @@ export const DEFAULT_SETTINGS: AppSettings = {
   asr: {
     provider: "mimo",
     api_key: "",
-    base_url: "",
+    base_url: "https://api.xiaomimimo.com/v1",
     model: "mimo-v2.5-asr",
   },
   summarizer: {
     provider: "mimo",
     api_key: "",
-    base_url: "",
+    base_url: "https://api.xiaomimimo.com/v1",
     model: "mimo-v2.6-flash",
   },
 };

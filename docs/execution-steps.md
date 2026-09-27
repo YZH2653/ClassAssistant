@@ -66,7 +66,7 @@
 
 ## 九、后续 TODO（v1 之后，不在本轮）
 
-- MiMo v2.5 ASR 真实 API 对接（`asr/mimo.rs`，**等涵涵提供 API 文档**）
-- MiMo v2.6 flash 真实 API 对接（`summarizer/mimo_flash.rs`，同上）
-- 真实 cpal 麦克风采集（`audio/cpal_capture.rs`，本轮 stub）
+- [x] MiMo v2.5 ASR 真实 API 对接（`asr/mimo.rs`，2026-09-27 完成：分片提交 + SSE 流式文本）
+- [x] MiMo v2.6 flash 真实 API 对接（`summarizer/mimo_flash.rs`，2026-09-27 完成）
+- 真实 cpal 麦克风采集（`audio/cpal_capture.rs`，仍是 stub，需另立步骤）
 - 导出 / 历史搜索 / 暂停标记 / 多端同步 / 数据库 / 音频落盘 / 其他厂商 API——**已确认不做**（v1 范围外，需要时另立版本）

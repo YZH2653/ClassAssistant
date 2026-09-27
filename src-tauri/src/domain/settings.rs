@@ -26,7 +26,7 @@ impl Default for ProviderConfig {
         Self {
             provider: ProviderKind::Mimo,
             api_key: String::new(),
-            base_url: String::new(),
+            base_url: "https://api.xiaomimimo.com/v1".to_string(),
             model: String::new(),
         }
     }

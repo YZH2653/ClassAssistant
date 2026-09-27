@@ -27,7 +27,8 @@
 | 2026-09-27 | 11 | 会话编排 actor + Tauri IPC 命令事件（19 个单测全绿，Mock 全链路跑通） | `9760aee` |
 | 2026-09-27 | 12 | 前端接入 IPC 打通 Mock 全链路（事件订阅 + 真实命令接线） | `5f6393d` |
 | 2026-09-27 | 13 | 设置页联调（读写 config.json、未配置拦截、测试连接、引擎切换） | `dbeae34` |
-| 2026-09-27 | 14 | 自测修正：修复 meta 统计字段未写入 bug，补回归断言（19 测试全绿） | 本提交 |
+| 2026-09-27 | 14 | 自测修正：修复 meta 统计字段未写入 bug，补回归断言（19 测试全绿） | `849e5d0` |
+| 2026-09-27 | 补充 | MiMo 真实对接：ASR 分片流式（wav/base64 + SSE）+ v2.6 flash 总结（25 测试全绿） | 本提交 |
 
 ## 三、进行中事项
 
@@ -48,9 +49,9 @@
 
 ### v1 后续（另行立项）
 
-- [ ] MiMo ASR 真实对接（asr/mimo.rs）
-- [ ] MiMo flash 真实对接（summarizer/mimo_flash.rs）
-- [ ] cpal 真实麦克风采集（audio/cpal_capture.rs）
+- [x] MiMo ASR 真实对接（asr/mimo.rs）——2026-09-27 完成
+- [x] MiMo flash 真实对接（summarizer/mimo_flash.rs）——2026-09-27 完成
+- [ ] cpal 真实麦克风采集（audio/cpal_capture.rs）——仍是 stub
 
 ### 已确认不做（v1 范围外）
 

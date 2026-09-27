@@ -1,5 +1,6 @@
 // 语音识别抽象
 pub mod mimo;
+pub mod wav;
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
