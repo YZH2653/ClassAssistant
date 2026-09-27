@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 import { useIpc } from "../hooks/useIpc";
 import { formatError } from "../lib/format";
@@ -74,6 +74,19 @@ function ProviderSection({ title, hint, value, onChange, onTest }: ProviderSecti
 export function SettingsPage() {
   const ipc = useIpc();
   const { settings, loading, message, setMessage, update, save } = useSettings();
+  const [devices, setDevices] = useState<string[]>([]);
+
+  const refreshDevices = useCallback(async () => {
+    try {
+      setDevices(await ipc.listInputDevices());
+    } catch (err) {
+      setMessage(formatError(err));
+    }
+  }, [ipc, setMessage]);
+
+  useEffect(() => {
+    refreshDevices();
+  }, [refreshDevices]);
 
   const setProvider = (provider: ProviderKind) => {
     update(
@@ -169,6 +182,43 @@ export function SettingsPage() {
             ? "关闭窗口后软件仍在托盘运行；双击托盘图标或重新打开软件即可唤回，不会重复启动。"
             : "关闭窗口即完全退出软件。"}
         </p>
+      </div>
+
+      <div className="rounded-xl border border-slate-200 bg-white p-5">
+        <h3 className="text-sm font-semibold text-slate-800">麦克风</h3>
+        <p className="mt-1 text-xs text-slate-500">
+          识别不准或没有文字时，先看主界面的麦克风电平表，确认这里选对了输入设备。
+        </p>
+        <label className="mt-4 block text-xs text-slate-500">
+          输入设备
+          <select
+            className={`mt-1 ${input}`}
+            value={settings.input_device}
+            onChange={(e) =>
+              update({ ...settings, input_device: e.currentTarget.value }, { persist: false })
+            }
+          >
+            <option value="">系统默认输入</option>
+            {devices.map((name) => (
+              <option key={name} value={name}>
+                {name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="mt-3 flex items-center gap-2 text-xs text-slate-600">
+          <input
+            type="checkbox"
+            checked={settings.auto_gain}
+            onChange={(e) =>
+              update({ ...settings, auto_gain: e.currentTarget.checked }, { persist: false })
+            }
+          />
+          自动增益（声音过小时自动放大）
+        </label>
+        <button className={`${btnGhost} mt-3`} onClick={refreshDevices}>
+          刷新设备列表
+        </button>
       </div>
 
       {!isMock && (

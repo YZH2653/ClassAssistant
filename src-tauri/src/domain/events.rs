@@ -46,6 +46,14 @@ pub struct AppErrorEvent {
     pub recoverable: bool,
 }
 
+// 麦克风电平
+#[derive(Debug, Clone, Serialize)]
+pub struct AudioLevelEvent {
+    pub session_id: String,
+    // 0.0 ~ 1.0
+    pub level: f32,
+}
+
 // 会话编排产出的 UI 事件
 #[derive(Debug, Clone)]
 pub enum UiEvent {
@@ -54,5 +62,6 @@ pub enum UiEvent {
     Segment(AsrSegmentEvent),
     SummaryProgress(SummaryProgressEvent),
     SummaryReady(SummaryReadyEvent),
+    Level(AudioLevelEvent),
     Error(AppErrorEvent),
 }

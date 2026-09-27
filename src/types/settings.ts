@@ -17,6 +17,10 @@ export interface AppSettings {
   // 总结是否开启深度思考（true = 深度思考，false = 最快输出）
   thinking: boolean;
   close_behavior: CloseBehavior;
+  // 输入设备名（空 = 系统默认输入）
+  input_device: string;
+  // 音量过低时自动增益
+  auto_gain: boolean;
 }
 
 export interface TestResult {
@@ -40,4 +44,6 @@ export const DEFAULT_SETTINGS: AppSettings = {
   },
   thinking: true,
   close_behavior: "tray",
+  input_device: "",
+  auto_gain: true,
 };

@@ -39,7 +39,8 @@
 | 2026-09-27 | 测试包 | 补 WebView2Loader.dll 并打测试 zip（绿色版可独立运行） | `01d9d0e` |
 | 2026-09-27 | 15 | **发布 v1.0.0.0**：合并 main、打 tag、打包 zip + 安装版到 output/ | `3269b2a` |
 | 2026-09-27 | 15 | 发布包整合：zip 内含安装版 + 绿色版 + 使用说明 | `3ca3331` |
-| 2026-09-27 | 15 | 修复安装包缺 WebView2Loader.dll（bundle.resources + MSI 验证通过） | 本提交 |
+| 2026-09-27 | 15 | 修复安装包缺 WebView2Loader.dll（bundle.resources + MSI 验证通过） | `e58105f` |
+| 2026-09-27 | 16 | 输入设备选择 + 麦克风电平表（根治 Redmi 识别错误） | 本提交 |
 
 ## 三、进行中事项
 

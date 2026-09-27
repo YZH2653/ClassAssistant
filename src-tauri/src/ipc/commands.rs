@@ -46,7 +46,17 @@ pub async fn start_class(
             "请先在设置页配置 MiMo API 密钥",
         ));
     }
-    state.manager.start(title).await
+    let options = crate::audio::CaptureOptions {
+        device_name: (!settings.input_device.trim().is_empty())
+            .then(|| settings.input_device.clone()),
+        auto_gain: settings.auto_gain,
+    };
+    state.manager.start(title, options).await
+}
+
+#[tauri::command]
+pub fn list_input_devices() -> Vec<String> {
+    crate::audio::cpal_capture::list_input_devices()
 }
 
 #[tauri::command]

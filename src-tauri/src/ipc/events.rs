@@ -8,6 +8,7 @@ pub const EVT_ASR_PARTIAL: &str = "asr:partial";
 pub const EVT_ASR_SEGMENT: &str = "asr:segment";
 pub const EVT_SUMMARY_PROGRESS: &str = "summary:progress";
 pub const EVT_SUMMARY_READY: &str = "summary:ready";
+pub const EVT_AUDIO_LEVEL: &str = "audio:level";
 pub const EVT_APP_ERROR: &str = "app:error";
 
 pub fn emit_ui_event<R: Runtime>(app: &AppHandle<R>, event: &UiEvent) {
@@ -17,6 +18,7 @@ pub fn emit_ui_event<R: Runtime>(app: &AppHandle<R>, event: &UiEvent) {
         UiEvent::Segment(payload) => app.emit(EVT_ASR_SEGMENT, payload),
         UiEvent::SummaryProgress(payload) => app.emit(EVT_SUMMARY_PROGRESS, payload),
         UiEvent::SummaryReady(payload) => app.emit(EVT_SUMMARY_READY, payload),
+        UiEvent::Level(payload) => app.emit(EVT_AUDIO_LEVEL, payload),
         UiEvent::Error(payload) => app.emit(EVT_APP_ERROR, payload),
     };
 }

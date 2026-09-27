@@ -9,6 +9,7 @@ export const CMD = {
   GetSettings: "get_settings",
   SaveSettings: "save_settings",
   TestProviderConnection: "test_provider_connection",
+  ListInputDevices: "list_input_devices",
 } as const;
 
 export const EVT = {
@@ -17,5 +18,6 @@ export const EVT = {
   AsrSegment: "asr:segment",
   SummaryProgress: "summary:progress",
   SummaryReady: "summary:ready",
+  AudioLevel: "audio:level",
   AppError: "app:error",
 } as const;

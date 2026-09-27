@@ -8,6 +8,7 @@ import type {
   AppErrorEvent,
   AsrPartialEvent,
   AsrSegmentEvent,
+  AudioLevelEvent,
   SessionStateEvent,
   SummaryProgressEvent,
   SummaryReadyEvent,
@@ -59,6 +60,11 @@ export function useSessionEvents() {
           dispatch({ type: "SET_SUMMARY", markdown: event.payload.summary_markdown });
           dispatch({ type: "SET_SESSION", session: event.payload.meta });
           dispatch({ type: "SET_SUMMARY_STAGE", stage: null });
+        }),
+      );
+      subs.push(
+        await listen<AudioLevelEvent>(EVT.AudioLevel, (event) => {
+          dispatch({ type: "SET_LEVEL", level: event.payload.level });
         }),
       );
       subs.push(

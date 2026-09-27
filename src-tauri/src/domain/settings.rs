@@ -77,6 +77,10 @@ pub struct AppSettings {
     pub thinking: bool,
     // 点关闭按钮时的行为
     pub close_behavior: CloseBehavior,
+    // 输入设备名（空 = 系统默认输入）
+    pub input_device: String,
+    // 音量过低时自动增益
+    pub auto_gain: bool,
 }
 
 // 连接测试结果
@@ -134,6 +138,13 @@ mod tests {
         assert_eq!(settings.close_behavior, CloseBehavior::Tray);
         assert!(!settings.thinking);
     }
+
+    #[test]
+    fn audio_options_defaults() {
+        let settings = AppSettings::default();
+        assert!(settings.input_device.is_empty());
+        assert!(settings.auto_gain);
+    }
 }
 
 impl Default for AppSettings {
@@ -149,6 +160,8 @@ impl Default for AppSettings {
             },
             thinking: true,
             close_behavior: CloseBehavior::Tray,
+            input_device: String::new(),
+            auto_gain: true,
         }
     }
 }

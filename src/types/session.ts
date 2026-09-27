@@ -71,6 +71,11 @@ export interface SummaryReadyEvent {
   meta: SessionMeta;
 }
 
+export interface AudioLevelEvent {
+  session_id: string;
+  level: number;
+}
+
 export interface AppErrorEvent {
   scope: "audio" | "asr" | "summary" | "storage" | "session";
   message: string;

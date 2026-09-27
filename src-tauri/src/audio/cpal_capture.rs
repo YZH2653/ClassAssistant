@@ -4,7 +4,7 @@ use std::sync::mpsc::{self as std_mpsc, SyncSender};
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use cpal::{SampleFormat, StreamConfig};
 
-use super::{AudioCapture, AudioError, AudioFrame, CaptureHandle};
+use super::{apply_auto_gain, AudioCapture, AudioError, AudioFrame, CaptureHandle, CaptureOptions};
 
 // 目标采样率（下游 ASR 约定 16kHz 单声道 s16le）
 const TARGET_RATE: u32 = 16000;
@@ -29,10 +29,15 @@ impl AudioCapture for CpalCapture {
         "cpal"
     }
 
-    fn start(&self, tx: SyncSender<AudioFrame>) -> Result<Box<dyn CaptureHandle>, AudioError> {
+    fn start(
+        &self,
+        tx: SyncSender<AudioFrame>,
+        options: &CaptureOptions,
+    ) -> Result<Box<dyn CaptureHandle>, AudioError> {
+        let options = options.clone();
         let (ready_tx, ready_rx) = std_mpsc::channel();
         let (stop_tx, stop_rx) = std_mpsc::channel();
-        std::thread::spawn(move || run_capture(tx, stop_rx, ready_tx));
+        std::thread::spawn(move || run_capture(tx, stop_rx, ready_tx, options));
         match ready_rx.recv() {
             Ok(Ok(())) => Ok(Box::new(CpalHandle {
                 stop_tx: Some(stop_tx),
@@ -48,8 +53,9 @@ fn run_capture(
     tx: SyncSender<AudioFrame>,
     stop_rx: std_mpsc::Receiver<()>,
     ready_tx: std_mpsc::Sender<Result<(), AudioError>>,
+    options: CaptureOptions,
 ) {
-    match build_stream(tx) {
+    match build_stream(tx, &options) {
         Ok(stream) => {
             if let Err(err) = stream.play() {
                 let _ = ready_tx.send(Err(AudioError(format!("启动麦克风失败：{err}"))));
@@ -65,19 +71,62 @@ fn run_capture(
     }
 }
 
-// 按设备默认配置建流，回调里转成 16kHz 单声道 s16le
-fn build_stream(tx: SyncSender<AudioFrame>) -> Result<cpal::Stream, AudioError> {
+// 列出可用输入设备名
+pub fn list_input_devices() -> Vec<String> {
     let host = cpal::default_host();
-    let device = host
-        .default_input_device()
-        .ok_or_else(|| AudioError("找不到麦克风设备，请检查系统声音设置".to_string()))?;
+    host.input_devices()
+        .map(|devices| {
+            devices
+                .filter_map(|device| device.name().ok())
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default()
+}
+
+// 选输入设备：按名字找，找不到/未指定用系统默认
+fn pick_device(name: Option<&str>) -> Result<cpal::Device, AudioError> {
+    let host = cpal::default_host();
+    if let Some(wanted) = name.map(str::trim).filter(|n| !n.is_empty()) {
+        if let Ok(devices) = host.input_devices() {
+            for device in devices {
+                if device.name().map(|n| n == wanted).unwrap_or(false) {
+                    return Ok(device);
+                }
+            }
+        }
+        return Err(AudioError(format!("找不到输入设备：{wanted}")));
+    }
+    host.default_input_device()
+        .ok_or_else(|| AudioError("找不到麦克风设备，请检查系统声音设置".to_string()))
+}
+
+// 按设备默认配置建流，回调里转成 16kHz 单声道 s16le
+fn build_stream(
+    tx: SyncSender<AudioFrame>,
+    options: &CaptureOptions,
+) -> Result<cpal::Stream, AudioError> {
+    let device = pick_device(options.device_name.as_deref())?;
     let supported = device
         .default_input_config()
         .map_err(|e| AudioError(format!("读取麦克风配置失败：{e}")))?;
     let input_rate = supported.sample_rate().0;
     let channels = supported.channels() as usize;
     let config: StreamConfig = supported.config();
+    let auto_gain = options.auto_gain;
     let err_fn = |err: cpal::StreamError| eprintln!("audio stream error: {err}");
+
+    let format = supported.sample_format();
+    if !matches!(
+        format,
+        SampleFormat::F32
+            | SampleFormat::I16
+            | SampleFormat::U16
+            | SampleFormat::I32
+            | SampleFormat::U32
+            | SampleFormat::F64
+    ) {
+        return Err(AudioError(format!("暂不支持的音频格式：{format:?}")));
+    }
 
     let mut tick: u64 = 0;
     let built = match supported.sample_format() {
@@ -85,33 +134,89 @@ fn build_stream(tx: SyncSender<AudioFrame>) -> Result<cpal::Stream, AudioError> 
             .build_input_stream(
                 &config,
                 move |data: &[f32], _| {
-                    let samples = to_mono_s16(data, channels);
-                    push_frame(&tx, &samples, input_rate, &mut tick);
+                    let mut samples = to_mono_s16(data, channels);
+                    push_frame(&tx, &mut samples, input_rate, &mut tick, auto_gain);
                 },
                 err_fn,
                 None,
-            )
-            .map_err(|e| AudioError(format!("打开麦克风失败：{e}"))),
+            ),
         SampleFormat::I16 => device
             .build_input_stream(
                 &config,
                 move |data: &[i16], _| {
                     let floats: Vec<f32> =
                         data.iter().map(|s| *s as f32 / i16::MAX as f32).collect();
-                    let samples = to_mono_s16(&floats, channels);
-                    push_frame(&tx, &samples, input_rate, &mut tick);
+                    let mut samples = to_mono_s16(&floats, channels);
+                    push_frame(&tx, &mut samples, input_rate, &mut tick, auto_gain);
                 },
                 err_fn,
                 None,
-            )
-            .map_err(|e| AudioError(format!("打开麦克风失败：{e}"))),
-        other => Err(AudioError(format!("暂不支持的音频格式：{other:?}"))),
+            ),
+        SampleFormat::U16 => device
+            .build_input_stream(
+                &config,
+                move |data: &[u16], _| {
+                    let floats: Vec<f32> =
+                        data.iter().map(|s| (*s as f32 - 32768.0) / 32768.0).collect();
+                    let mut samples = to_mono_s16(&floats, channels);
+                    push_frame(&tx, &mut samples, input_rate, &mut tick, auto_gain);
+                },
+                err_fn,
+                None,
+            ),
+        SampleFormat::I32 => device
+            .build_input_stream(
+                &config,
+                move |data: &[i32], _| {
+                    let floats: Vec<f32> =
+                        data.iter().map(|s| *s as f32 / i32::MAX as f32).collect();
+                    let mut samples = to_mono_s16(&floats, channels);
+                    push_frame(&tx, &mut samples, input_rate, &mut tick, auto_gain);
+                },
+                err_fn,
+                None,
+            ),
+        SampleFormat::U32 => device
+            .build_input_stream(
+                &config,
+                move |data: &[u32], _| {
+                    let floats: Vec<f32> = data
+                        .iter()
+                        .map(|s| (*s as f64 / u32::MAX as f64 * 2.0 - 1.0) as f32)
+                        .collect();
+                    let mut samples = to_mono_s16(&floats, channels);
+                    push_frame(&tx, &mut samples, input_rate, &mut tick, auto_gain);
+                },
+                err_fn,
+                None,
+            ),
+        SampleFormat::F64 => device
+            .build_input_stream(
+                &config,
+                move |data: &[f64], _| {
+                    let floats: Vec<f32> = data.iter().map(|s| *s as f32).collect();
+                    let mut samples = to_mono_s16(&floats, channels);
+                    push_frame(&tx, &mut samples, input_rate, &mut tick, auto_gain);
+                },
+                err_fn,
+                None,
+            ),
+        other => unreachable!("已在前面过滤不支持的格式：{other:?}"),
     };
-    built
+    built.map_err(|e| AudioError(format!("打开麦克风失败：{e}")))
 }
 
 // 送一帧（队列满则丢帧，不阻塞音频线程）
-fn push_frame(tx: &SyncSender<AudioFrame>, samples: &[i16], input_rate: u32, tick: &mut u64) {
+fn push_frame(
+    tx: &SyncSender<AudioFrame>,
+    samples: &mut Vec<i16>,
+    input_rate: u32,
+    tick: &mut u64,
+    auto_gain: bool,
+) {
+    if auto_gain {
+        apply_auto_gain(samples);
+    }
     let output = resample_linear(samples, input_rate, TARGET_RATE);
     if output.is_empty() {
         return;

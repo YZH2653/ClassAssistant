@@ -46,3 +46,7 @@ export function saveSettings(settings: AppSettings): Promise<void> {
 export function testProviderConnection(kind: "asr" | "summarizer"): Promise<TestResult> {
   return invoke(CMD.TestProviderConnection, { kind });
 }
+
+export function listInputDevices(): Promise<string[]> {
+  return invoke(CMD.ListInputDevices);
+}

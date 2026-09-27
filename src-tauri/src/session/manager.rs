@@ -5,11 +5,11 @@ use std::time::Instant;
 
 use tokio::sync::{mpsc, oneshot};
 
-use crate::audio::{AudioCapture, AudioFrame, CaptureHandle};
+use crate::audio::{AudioCapture, AudioFrame, CaptureHandle, CaptureOptions};
 use crate::asr::{AsrConfig, AsrEvent, AsrProvider};
 use crate::domain::events::{
-    AppErrorEvent, AsrPartialEvent, AsrSegmentEvent, SessionStateEvent, SummaryProgressEvent,
-    SummaryReadyEvent, UiEvent,
+    AppErrorEvent, AsrPartialEvent, AsrSegmentEvent, AudioLevelEvent, SessionStateEvent,
+    SummaryProgressEvent, SummaryReadyEvent, UiEvent,
 };
 use crate::domain::session::{SessionDetail, SessionMeta, SessionSnapshot, SessionStatus};
 use crate::domain::summary::{SummaryRequest, SummaryResult};
@@ -33,6 +33,7 @@ pub type SharedProviders = Arc<std::sync::RwLock<Arc<Providers>>>;
 pub enum ManagerCmd {
     Start {
         title: Option<String>,
+        options: CaptureOptions,
         resp: oneshot::Sender<Result<SessionDetail, AppError>>,
     },
     End {
@@ -45,6 +46,9 @@ pub enum ManagerCmd {
         resp: oneshot::Sender<Result<(), AppError>>,
     },
     Asr(AsrEvent),
+    Level {
+        level: f32,
+    },
     SummaryDone(Result<SummaryResult, SummaryError>),
 }
 
@@ -74,10 +78,18 @@ impl SessionManager {
         (Self { tx }, actor.run(rx))
     }
 
-    pub async fn start(&self, title: Option<String>) -> Result<SessionDetail, AppError> {
+    pub async fn start(
+        &self,
+        title: Option<String>,
+        options: CaptureOptions,
+    ) -> Result<SessionDetail, AppError> {
         let (resp, rx) = oneshot::channel();
         self.tx
-            .send(ManagerCmd::Start { title, resp })
+            .send(ManagerCmd::Start {
+                title,
+                options,
+                resp,
+            })
             .await
             .map_err(|_| stopped())?;
         rx.await.map_err(|_| stopped())?
@@ -139,8 +151,12 @@ impl Actor {
     async fn run(mut self, mut rx: mpsc::Receiver<ManagerCmd>) {
         while let Some(cmd) = rx.recv().await {
             match cmd {
-                ManagerCmd::Start { title, resp } => {
-                    let _ = resp.send(self.handle_start(title).await);
+                ManagerCmd::Start {
+                    title,
+                    options,
+                    resp,
+                } => {
+                    let _ = resp.send(self.handle_start(title, options).await);
                 }
                 ManagerCmd::End { resp } => {
                     let _ = resp.send(self.handle_end().await);
@@ -152,6 +168,7 @@ impl Actor {
                     let _ = resp.send(self.handle_reset());
                 }
                 ManagerCmd::Asr(event) => self.handle_asr(event),
+                ManagerCmd::Level { level } => self.handle_level(level),
                 ManagerCmd::SummaryDone(result) => self.handle_summary(result),
             }
         }
@@ -178,7 +195,11 @@ impl Actor {
         }));
     }
 
-    async fn handle_start(&mut self, title: Option<String>) -> Result<SessionDetail, AppError> {
+    async fn handle_start(
+        &mut self,
+        title: Option<String>,
+        options: CaptureOptions,
+    ) -> Result<SessionDetail, AppError> {
         self.machine.handle(SessionEvent::Start)?;
         let providers = self.current_providers()?;
 
@@ -222,7 +243,7 @@ impl Actor {
         let (frame_tx, frame_rx) = std::sync::mpsc::sync_channel(64);
         let capture = providers
             .capture
-            .start(frame_tx)
+            .start(frame_tx, &options)
             .map_err(|e| AppError::new(ErrorScope::Audio, e.0))?;
         let (tok_tx, tok_rx) = mpsc::channel(64);
         std::thread::spawn(move || {
@@ -362,8 +383,17 @@ impl Actor {
         }
     }
 
-    fn handle_summary(&mut self, result: Result<SummaryResult, SummaryError>) {
-        // 先更新会话元数据，结束对 self.ctx 的借用
+    fn handle_level(&mut self, level: f32) {
+        let Some(session_id) = self.ctx.as_ref().map(|c| c.meta.id.clone()) else {
+            return;
+        };
+        self.emit(UiEvent::Level(AudioLevelEvent {
+            session_id,
+            level,
+        }));
+    }
+
+    fn handle_summary(&mut self, result: Result<SummaryResult, SummaryError>) {        // 先更新会话元数据，结束对 self.ctx 的借用
         let (id, meta) = {
             let Some(ctx) = self.ctx.as_mut() else {
                 return;
@@ -465,9 +495,20 @@ async fn run_pipeline(
         }
     };
 
+    let mut max_peak = 0.0f32;
+    let mut last_level = std::time::Instant::now();
+
     let mut finished = false;
     loop {
         while let Ok(frame) = frames.try_recv() {
+            let peak = crate::audio::peak_of_pcm(&frame.pcm_s16le);
+            if peak > max_peak {
+                max_peak = peak;
+            }
+            if last_level.elapsed().as_millis() >= 200 {
+                last_level = std::time::Instant::now();
+                let _ = cmd_tx.try_send(ManagerCmd::Level { level: peak });
+            }
             if stream.push_audio(frame).await.is_err() {
                 return;
             }
@@ -489,6 +530,14 @@ async fn run_pipeline(
             Ok(None) => break,
             Err(_) => {}
         }
+    }
+
+    if max_peak < 0.01 {
+        let _ = cmd_tx
+            .send(ManagerCmd::Asr(AsrEvent::Error {
+                message: "未检测到麦克风声音，请检查录音设备与系统音量".to_string(),
+            }))
+            .await;
     }
 }
 
@@ -545,7 +594,10 @@ mod tests {
             SessionManager::create(fast_providers(), Arc::new(FsSessionStore::new(&root)), sink);
         tokio::spawn(actor);
 
-        let detail = manager.start(Some("测试课".into())).await.unwrap();
+        let detail = manager
+            .start(Some("测试课".into()), CaptureOptions::default())
+            .await
+            .unwrap();
         assert_eq!(detail.snapshot.meta.status, SessionStatus::Recording);
         assert!(detail.snapshot.data_dir.is_some());
 

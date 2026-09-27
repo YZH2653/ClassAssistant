@@ -111,6 +111,7 @@ export default function App() {
           <>
             <ControlBar
               status={state.status}
+              level={state.level}
               onStart={handleStart}
               onEnd={handleEnd}
               onReset={handleReset}

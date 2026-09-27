@@ -29,11 +29,54 @@ pub trait CaptureHandle: Send {
     fn stop(&mut self);
 }
 
+// 采集选项
+#[derive(Debug, Clone, Default)]
+pub struct CaptureOptions {
+    // 输入设备名（None = 系统默认）
+    pub device_name: Option<String>,
+    // 音量过低时自动增益
+    pub auto_gain: bool,
+}
+
 // 音频采集器
 pub trait AudioCapture: Send + Sync {
     fn name(&self) -> &'static str;
-    fn start(&self, tx: SyncSender<AudioFrame>) -> Result<Box<dyn CaptureHandle>, AudioError>;
+    fn start(
+        &self,
+        tx: SyncSender<AudioFrame>,
+        options: &CaptureOptions,
+    ) -> Result<Box<dyn CaptureHandle>, AudioError>;
 }
+
+// 计算 s16le 音频的峰值（0.0 ~ 1.0）
+pub fn peak_of_pcm(pcm: &[u8]) -> f32 {
+    let mut peak: i32 = 0;
+    for chunk in pcm.chunks_exact(2) {
+        let sample = i16::from_le_bytes([chunk[0], chunk[1]]).unsigned_abs() as i32;
+        if sample > peak {
+            peak = sample;
+        }
+    }
+    peak as f32 / i16::MAX as f32
+}
+
+// 峰值过低时提升增益（只升不降，最多 10 倍）
+pub fn apply_auto_gain(samples: &mut [i16]) {
+    let peak = samples
+        .iter()
+        .map(|s| s.unsigned_abs() as u32)
+        .max()
+        .unwrap_or(0) as f32
+        / i16::MAX as f32;
+    if peak < 0.1 {
+        let gain = (0.3 / peak.max(1e-4)).clamp(1.0, 10.0);
+        for sample in samples.iter_mut() {
+            *sample = ((*sample as f32 * gain).clamp(-32767.0, 32767.0)) as i16;
+        }
+    }
+}
+
+// （原始音频落盘功能已按需求移除）
 
 // Mock 采集器（正弦波）
 pub struct MockAudioCapture {
@@ -63,7 +106,11 @@ impl AudioCapture for MockAudioCapture {
         "mock"
     }
 
-    fn start(&self, tx: SyncSender<AudioFrame>) -> Result<Box<dyn CaptureHandle>, AudioError> {
+    fn start(
+        &self,
+        tx: SyncSender<AudioFrame>,
+        _options: &CaptureOptions,
+    ) -> Result<Box<dyn CaptureHandle>, AudioError> {
         let stop = Arc::new(AtomicBool::new(false));
         let stop_flag = stop.clone();
         let interval = self.frame_interval_ms.max(1);
@@ -107,11 +154,30 @@ mod tests {
             frame_interval_ms: 5,
         };
         let (tx, rx) = sync_channel(8);
-        let mut handle = capture.start(tx).unwrap();
+        let mut handle = capture.start(tx, &CaptureOptions::default()).unwrap();
         let frame = rx.recv_timeout(Duration::from_secs(2)).unwrap();
         assert_eq!(frame.sample_rate, 16000);
         assert_eq!(frame.channels, 1);
         assert!(!frame.pcm_s16le.is_empty());
         handle.stop();
+    }
+
+    #[test]
+    fn peak_is_computed_from_pcm() {
+        let mut pcm = Vec::new();
+        pcm.extend_from_slice(&1000i16.to_le_bytes());
+        pcm.extend_from_slice(&i16::MAX.to_le_bytes());
+        assert!((peak_of_pcm(&pcm) - 1.0).abs() < 0.001);
+    }
+
+    #[test]
+    fn auto_gain_boosts_quiet_audio_only() {
+        let mut quiet = vec![100i16, -100, 200, -200];
+        apply_auto_gain(&mut quiet);
+        assert!(quiet.iter().any(|s| s.unsigned_abs() > 1000));
+
+        let mut loud = vec![20000i16, -20000];
+        apply_auto_gain(&mut loud);
+        assert_eq!(loud[0], 20000);
     }
 }

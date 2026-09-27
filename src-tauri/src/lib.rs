@@ -49,6 +49,7 @@ pub fn run() {
             ipc::commands::get_settings,
             ipc::commands::save_settings,
             ipc::commands::test_provider_connection,
+            ipc::commands::list_input_devices,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
