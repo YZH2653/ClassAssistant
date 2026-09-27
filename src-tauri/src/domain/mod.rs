@@ -1,4 +1,5 @@
 // 领域数据模型（纯数据 + serde）
+pub mod events;
 pub mod session;
 pub mod settings;
 pub mod summary;

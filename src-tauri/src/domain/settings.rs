@@ -40,6 +40,13 @@ pub struct AppSettings {
     pub summarizer: ProviderConfig,
 }
 
+// 连接测试结果
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TestResult {
+    pub ok: bool,
+    pub message: String,
+}
+
 impl Default for AppSettings {
     fn default() -> Self {
         Self {

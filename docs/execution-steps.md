@@ -43,7 +43,7 @@
 ## 六、M4 存储层与 IPC 编排闭环
 
 - [x] 步骤 10：SessionStore + FsSessionStore + ConfigStore + 临时目录单测 → `feat: 本地文件会话存储与配置存储层`
-- [ ] 步骤 11：SessionManager actor + IPC commands/events（含 get/save_settings、test_provider_connection）+ app.rs 装配 → `feat: 会话编排与 Tauri IPC 命令事件`
+- [x] 步骤 11：SessionManager actor + IPC commands/events（含 get/save_settings、test_provider_connection）+ app.rs 装配 → `feat: 会话编排与 Tauri IPC 命令事件`
 
 ## 七、M5 前端 UI 与 Mock 链路联调
 
