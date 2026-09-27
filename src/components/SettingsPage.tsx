@@ -1,11 +1,11 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 
 import { useIpc } from "../hooks/useIpc";
 import { formatError } from "../lib/format";
 import { isKnownBaseUrl, resolveBaseUrl } from "../lib/mimo";
+import { useSettings } from "../state/SettingsContext";
 import {
   DEFAULT_SETTINGS,
-  type AppSettings,
   type ProviderConfig,
   type ProviderKind,
 } from "../types/settings";
@@ -73,24 +73,17 @@ function ProviderSection({ title, hint, value, onChange, onTest }: ProviderSecti
 
 export function SettingsPage() {
   const ipc = useIpc();
-  const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
-  const [message, setMessage] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    ipc
-      .getSettings()
-      .then((loaded) => setSettings(loaded))
-      .catch((err) => setMessage(formatError(err)))
-      .finally(() => setLoading(false));
-  }, [ipc]);
+  const { settings, loading, message, setMessage, update, save } = useSettings();
 
   const setProvider = (provider: ProviderKind) => {
-    setSettings({
-      ...settings,
-      asr: { ...settings.asr, provider },
-      summarizer: { ...settings.summarizer, provider },
-    });
+    update(
+      {
+        ...settings,
+        asr: { ...settings.asr, provider },
+        summarizer: { ...settings.summarizer, provider },
+      },
+      { persist: false },
+    );
   };
 
   // 改配置项：密钥变化时自动带出接口地址（用户手动改过地址则不覆盖）
@@ -98,19 +91,15 @@ export function SettingsPage() {
     const prev = settings[kind];
     const autoUrl = next.api_key !== prev.api_key && isKnownBaseUrl(prev.base_url);
     const merged = autoUrl ? { ...next, base_url: resolveBaseUrl(next.api_key) } : next;
-    setSettings({ ...settings, [kind]: merged });
+    update({ ...settings, [kind]: merged }, { persist: false });
     if (autoUrl) {
       setMessage("已按密钥类型自动选择接口地址");
     }
   };
 
   const handleSave = async () => {
-    try {
-      await ipc.saveSettings(settings);
-      setMessage("已保存到本机 config.json");
-    } catch (err) {
-      setMessage(formatError(err));
-    }
+    await save();
+    setMessage("已保存到本机 config.json");
   };
 
   const handleTest = async (kind: "asr" | "summarizer") => {
@@ -122,14 +111,9 @@ export function SettingsPage() {
     }
   };
 
-  const handleReset = async () => {
-    setSettings(DEFAULT_SETTINGS);
-    try {
-      await ipc.saveSettings(DEFAULT_SETTINGS);
-      setMessage("已恢复默认（API Key 已清空）");
-    } catch (err) {
-      setMessage(formatError(err));
-    }
+  const handleReset = () => {
+    update(DEFAULT_SETTINGS);
+    setMessage("已恢复默认（API Key 已清空）");
   };
 
   const isMock = settings.asr.provider === "mock";
@@ -183,7 +167,7 @@ export function SettingsPage() {
           <div className="rounded-xl border border-slate-200 bg-white p-5">
             <h3 className="text-sm font-semibold text-slate-800">总结思考</h3>
             <p className="mt-1 text-xs text-slate-500">
-              控制下课总结时是否深度思考。理科、需要推演的课程建议开启；文科讲座类课程可以选最快输出。
+              控制下课总结时是否深度思考。主界面控制条上也有快捷切换。
             </p>
             <input
               type="range"
@@ -192,7 +176,7 @@ export function SettingsPage() {
               step={1}
               value={settings.thinking ? 1 : 0}
               onChange={(e) =>
-                setSettings({ ...settings, thinking: e.currentTarget.value === "1" })
+                update({ ...settings, thinking: e.currentTarget.value === "1" }, { persist: false })
               }
               className="mt-4 w-full accent-indigo-600"
             />
