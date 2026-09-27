@@ -8,11 +8,15 @@ export interface ProviderConfig {
   model: string;
 }
 
+// 关闭按钮行为：exit 退出软件，tray 最小化到托盘
+export type CloseBehavior = "exit" | "tray";
+
 export interface AppSettings {
   asr: ProviderConfig;
   summarizer: ProviderConfig;
   // 总结是否开启深度思考（true = 深度思考，false = 最快输出）
   thinking: boolean;
+  close_behavior: CloseBehavior;
 }
 
 export interface TestResult {
@@ -35,4 +39,5 @@ export const DEFAULT_SETTINGS: AppSettings = {
     model: "mimo-v2.6-flash",
   },
   thinking: true,
+  close_behavior: "tray",
 };

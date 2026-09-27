@@ -148,6 +148,29 @@ export function SettingsPage() {
         </p>
       </div>
 
+      <div className="rounded-xl border border-slate-200 bg-white p-5">
+        <h3 className="text-sm font-semibold text-slate-800">点关闭按钮时</h3>
+        <div className="mt-3 flex gap-2">
+          <button
+            className={choice(settings.close_behavior === "tray")}
+            onClick={() => update({ ...settings, close_behavior: "tray" })}
+          >
+            最小化到托盘
+          </button>
+          <button
+            className={choice(settings.close_behavior === "exit")}
+            onClick={() => update({ ...settings, close_behavior: "exit" })}
+          >
+            退出软件
+          </button>
+        </div>
+        <p className="mt-2 text-xs text-slate-500">
+          {settings.close_behavior === "tray"
+            ? "关闭窗口后软件仍在托盘运行；双击托盘图标或重新打开软件即可唤回，不会重复启动。"
+            : "关闭窗口即完全退出软件。"}
+        </p>
+      </div>
+
       {!isMock && (
         <>
           <ProviderSection

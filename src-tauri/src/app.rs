@@ -2,7 +2,9 @@
 use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
 
-use tauri::{App, Manager};
+use tauri::menu::{Menu, MenuItem};
+use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
+use tauri::{App, AppHandle, Manager};
 
 use crate::asr::mimo::MimoAsrProvider;
 use crate::asr::{AsrProvider, MockAsrProvider};
@@ -51,6 +53,7 @@ pub fn build_providers(settings: &AppSettings) -> Providers {
 pub fn setup(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
     let data_dir = app.path().app_data_dir()?;
     std::fs::create_dir_all(&data_dir)?;
+    setup_tray(app)?;
 
     let config_store = ConfigStore::new(data_dir.join("config.json"));
     let settings = config_store.load();
@@ -75,5 +78,48 @@ pub fn setup(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
         data_dir,
         app_version: env!("CARGO_PKG_VERSION").to_string(),
     });
+    Ok(())
+}
+
+// 显示并置顶主窗口（托盘/单实例唤起共用）
+pub fn show_window(app: &AppHandle) {
+    if let Some(window) = app.get_webview_window("main") {
+        let _ = window.show();
+        let _ = window.unminimize();
+        let _ = window.set_focus();
+    }
+}
+
+// 托盘图标：点击唤出主界面，右键菜单可退出
+fn setup_tray(app: &App) -> Result<(), Box<dyn std::error::Error>> {
+    let show = MenuItem::with_id(app, "show", "显示主界面", true, None::<&str>)?;
+    let quit = MenuItem::with_id(app, "quit", "退出", true, None::<&str>)?;
+    let menu = Menu::with_items(app, &[&show, &quit])?;
+    let icon = app
+        .default_window_icon()
+        .ok_or("缺少应用图标")?
+        .clone();
+
+    TrayIconBuilder::with_id("main-tray")
+        .icon(icon)
+        .tooltip("ClassAssistant 课堂助手")
+        .menu(&menu)
+        .show_menu_on_left_click(false)
+        .on_menu_event(|app, event| match event.id.as_ref() {
+            "show" => show_window(app),
+            "quit" => app.exit(0),
+            _ => {}
+        })
+        .on_tray_icon_event(|tray, event| {
+            if let TrayIconEvent::Click {
+                button: MouseButton::Left,
+                button_state: MouseButtonState::Up,
+                ..
+            } = event
+            {
+                show_window(tray.app_handle());
+            }
+        })
+        .build(app)?;
     Ok(())
 }

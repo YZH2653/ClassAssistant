@@ -58,6 +58,15 @@ impl ProviderConfig {
     }
 }
 
+// 关闭按钮行为
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum CloseBehavior {
+    Exit,
+    #[default]
+    Tray,
+}
+
 // 应用 API 配置
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
@@ -66,6 +75,8 @@ pub struct AppSettings {
     pub summarizer: ProviderConfig,
     // 总结是否开启深度思考
     pub thinking: bool,
+    // 点关闭按钮时的行为
+    pub close_behavior: CloseBehavior,
 }
 
 // 连接测试结果
@@ -114,6 +125,15 @@ mod tests {
     fn thinking_defaults_to_enabled() {
         assert!(AppSettings::default().thinking);
     }
+
+    #[test]
+    fn close_behavior_defaults_to_tray() {
+        assert_eq!(AppSettings::default().close_behavior, CloseBehavior::Tray);
+        let json = serde_json::json!({ "thinking": false });
+        let settings: AppSettings = serde_json::from_value(json).unwrap();
+        assert_eq!(settings.close_behavior, CloseBehavior::Tray);
+        assert!(!settings.thinking);
+    }
 }
 
 impl Default for AppSettings {
@@ -128,6 +148,7 @@ impl Default for AppSettings {
                 ..ProviderConfig::default()
             },
             thinking: true,
+            close_behavior: CloseBehavior::Tray,
         }
     }
 }
