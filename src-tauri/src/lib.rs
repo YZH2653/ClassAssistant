@@ -6,6 +6,7 @@ mod audio;
 mod domain;
 mod error;
 mod session;
+mod storage;
 mod summarizer;
 
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
