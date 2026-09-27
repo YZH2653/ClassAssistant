@@ -252,6 +252,13 @@ impl Actor {
     async fn handle_end(&mut self) -> Result<SessionSnapshot, AppError> {
         self.machine.handle(SessionEvent::End)?;
 
+        let segment_count = self.segments.len() as u32;
+        let word_count = self
+            .segments
+            .iter()
+            .map(|seg| seg.text.chars().count() as u32)
+            .sum();
+
         // 先取走需要的字段，结束对 self.ctx 的借用
         let (id, title, started_at, duration_ms) = {
             let Some(ctx) = self.ctx.as_mut() else {
@@ -264,6 +271,8 @@ impl Actor {
             ctx.meta.status = SessionStatus::Summarizing;
             ctx.meta.ended_at = Some(now.to_rfc3339());
             ctx.meta.duration_ms = ctx.started.elapsed().as_millis() as u64;
+            ctx.meta.segment_count = segment_count;
+            ctx.meta.word_count = word_count;
             (
                 ctx.meta.id.clone(),
                 ctx.meta.title.clone(),
@@ -540,7 +549,19 @@ mod tests {
         assert_eq!(detail.snapshot.meta.status, SessionStatus::Recording);
         assert!(detail.snapshot.data_dir.is_some());
 
-        tokio::time::sleep(Duration::from_millis(80)).await;
+        // 等待定稿转写段落产生（Windows 计时器粒度较粗，按轮询等待）
+        let mut got_segments = false;
+        for _ in 0..100 {
+            if let Some(detail) = manager.get().await {
+                if detail.segments.len() >= 2 {
+                    got_segments = true;
+                    break;
+                }
+            }
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+        assert!(got_segments, "转写段落未产生");
+
         let snapshot = manager.end().await.unwrap();
         assert_eq!(snapshot.meta.status, SessionStatus::Summarizing);
 
@@ -573,6 +594,11 @@ mod tests {
         assert!(summary.contains("## 知识点"));
         let transcript = std::fs::read_to_string(dir.join("transcript.md")).unwrap();
         assert!(transcript.contains("## 转写正文"));
+        let meta: SessionMeta =
+            serde_json::from_str(&std::fs::read_to_string(dir.join("meta.json")).unwrap()).unwrap();
+        assert_eq!(meta.status, SessionStatus::Completed);
+        assert!(meta.segment_count > 0, "segment_count 未统计");
+        assert!(meta.word_count > 0, "word_count 未统计");
 
         let mut saw_ready = false;
         while let Ok(event) = events.try_recv() {

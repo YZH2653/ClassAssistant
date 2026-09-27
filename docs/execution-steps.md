@@ -52,7 +52,7 @@
 
 ## 八、M6 验证清单与 v1.0.0.0 发布流程
 
-- [ ] 步骤 14：自测修正（状态互斥/错误横幅/自动滚动/reveal）+ `cargo test` + `npm run build` + 更新文档 → `fix: Mock 链路自测修正与文档进度更新`
+- [x] 步骤 14：自测修正（状态互斥/错误横幅/自动滚动/reveal）+ `cargo test` + `npm run build` + 更新文档 → `fix: Mock 链路自测修正与文档进度更新`
 - [ ] 步骤 15：**（须涵涵测试确认后才执行）** 合并 `v1.0.0.0`→`main` + tag `v1.0.0.0` + push + `npm run tauri build` + zip 到 `output/ClassAssistant-v1.0.0.0-win-x64.zip` → `chore: 发布 v1.0.0.0`
 
 发布流程细则（步骤 15）：
