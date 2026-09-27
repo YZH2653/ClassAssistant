@@ -1,6 +1,6 @@
 [package]
 name = "class-assistant"
-version = "0.1.0"
+version = "1.0.0"
 description = "ClassAssistant 课堂助手"
 authors = ["YZH2653"]
 edition = "2021"
