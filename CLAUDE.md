@@ -63,7 +63,7 @@ cd src-tauri && cargo test --release # Rust 单元测试
 
 > 测试必须用 `--release`：MinGW 工具链产出的 **debug 测试二进制无法启动**（0xc0000139 STATUS_ENTRYPOINT_NOT_FOUND，链接器产物异常），release（strip + LTO）链接正常。
 
-> 注意：debug 版 exe 直接双击运行会显示「无法访问」——它会去连 `http://localhost:1420`（Vite 开发服务器）。开发调试一律用 `npm run tauri dev`；`npm run tauri build` 产出的发布版 exe 内嵌页面、可独立运行。
+> 注意：debug 版 exe 直接双击运行会显示「无法访问」——它会去连 `http://localhost:1420`（Vite 开发服务器）。开发调试一律用 `npm run tauri dev`（或双击项目根的 `启动开发.bat`）；`npm run tauri build` 产出的发布版 exe 内嵌页面、可独立运行。
 
 ## 八、安全红线（强制）
 
