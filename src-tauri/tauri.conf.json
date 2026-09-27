@@ -14,7 +14,9 @@
       {
         "title": "ClassAssistant 课堂助手",
         "width": 1280,
-        "height": 800
+        "height": 800,
+        "minWidth": 1024,
+        "minHeight": 640
       }
     ],
     "security": {
