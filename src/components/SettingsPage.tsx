@@ -164,32 +164,6 @@ export function SettingsPage() {
             onChange={(next) => changeProvider("summarizer", next)}
             onTest={() => handleTest("summarizer")}
           />
-          <div className="rounded-xl border border-slate-200 bg-white p-5">
-            <h3 className="text-sm font-semibold text-slate-800">总结思考</h3>
-            <p className="mt-1 text-xs text-slate-500">
-              控制下课总结时是否深度思考。主界面控制条上也有快捷切换。
-            </p>
-            <input
-              type="range"
-              min={0}
-              max={1}
-              step={1}
-              value={settings.thinking ? 1 : 0}
-              onChange={(e) =>
-                update({ ...settings, thinking: e.currentTarget.value === "1" }, { persist: false })
-              }
-              className="mt-4 w-full accent-indigo-600"
-            />
-            <div className="mt-1 flex justify-between text-xs text-slate-500">
-              <span>最快输出（关思考）</span>
-              <span>深度思考（开思考）</span>
-            </div>
-            <p className="mt-2 text-xs text-indigo-600">
-              {settings.thinking
-                ? "当前：深度思考——总结更深入，耗时更长"
-                : "当前：最快输出——关闭思考，速度更快"}
-            </p>
-          </div>
         </>
       )}
 

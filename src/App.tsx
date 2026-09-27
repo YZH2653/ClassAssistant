@@ -86,6 +86,7 @@ export default function App() {
   const handleReset = useCallback(async () => {
     try {
       await ipc.resetSession();
+      dispatch({ type: "RESET" });
     } catch (err) {
       dispatch({ type: "SET_ERROR", error: formatError(err) });
     }

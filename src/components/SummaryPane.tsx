@@ -1,3 +1,5 @@
+import { useState } from "react";
+
 import type { SessionStatus } from "../types/session";
 
 interface SummaryPaneProps {
@@ -13,9 +15,31 @@ const STAGE_LABEL: Record<string, string> = {
 };
 
 export function SummaryPane({ status, summaryMarkdown, summaryStage }: SummaryPaneProps) {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = async () => {
+    if (!summaryMarkdown) return;
+    try {
+      await navigator.clipboard.writeText(summaryMarkdown);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      setCopied(false);
+    }
+  };
+
   return (
     <section className="flex min-h-0 flex-col rounded-xl border border-slate-200 bg-white">
-      <h2 className="border-b border-slate-100 px-4 py-3 text-sm font-semibold text-slate-700">知识点总结</h2>
+      <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3">
+        <h2 className="text-sm font-semibold text-slate-700">知识点总结</h2>
+        <button
+          className="rounded-lg border border-slate-200 px-2.5 py-1 text-xs text-slate-600 hover:bg-slate-50 disabled:cursor-not-allowed disabled:text-slate-300"
+          onClick={handleCopy}
+          disabled={!summaryMarkdown}
+        >
+          {copied ? "已复制" : "复制"}
+        </button>
+      </div>
       <div className="flex-1 overflow-y-auto px-4 py-3 text-sm leading-7 text-slate-800">
         {status === "summarizing" && (
           <p className="text-amber-600">

@@ -24,7 +24,11 @@ export function useSessionEvents() {
       const subs: UnlistenFn[] = [];
       subs.push(
         await listen<SessionStateEvent>(EVT.SessionState, (event) => {
-          dispatch({ type: "SET_STATUS", status: event.payload.status });
+          if (event.payload.status === "idle") {
+            dispatch({ type: "RESET" });
+          } else {
+            dispatch({ type: "SET_STATUS", status: event.payload.status });
+          }
         }),
       );
       subs.push(
