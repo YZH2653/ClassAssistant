@@ -11,8 +11,6 @@ use crate::asr::wav::pcm_s16le_to_wav;
 use crate::audio::AudioFrame;
 use crate::domain::settings::ProviderConfig;
 
-// 默认接口地址
-pub const DEFAULT_BASE_URL: &str = "https://api.xiaomimimo.com/v1";
 // 单片时长（毫秒）：该接口按片提交音频，片长即文字延迟
 const CHUNK_MS: u64 = 8000;
 // 单片 PCM 上限（Base64 后远低于 10MB 上限）
@@ -135,7 +133,7 @@ async fn run_worker(
         .timeout(Duration::from_secs(300))
         .build()
         .unwrap_or_default();
-    let base_url = normalize_base_url(&config.base_url);
+    let base_url = config.effective_base_url();
 
     while let Some(msg) = chunk_rx.recv().await {
         match msg {
@@ -301,14 +299,10 @@ pub fn split_sentences(text: &str) -> Vec<String> {
     out
 }
 
-// 补全并规整接口地址
+// 补全并规整接口地址（保留给探测命令使用）
 pub fn normalize_base_url(base_url: &str) -> String {
     let trimmed = base_url.trim().trim_end_matches('/');
-    if trimmed.is_empty() {
-        DEFAULT_BASE_URL.to_string()
-    } else {
-        trimmed.to_string()
-    }
+    trimmed.to_string()
 }
 
 fn pcm_duration_ms(pcm: &[u8], sample_rate: u32, channels: u16) -> u64 {
@@ -362,11 +356,11 @@ mod tests {
     }
 
     #[test]
-    fn base_url_defaults_and_normalizes() {
-        assert_eq!(normalize_base_url(""), DEFAULT_BASE_URL);
+    fn base_url_trailing_slash_trimmed() {
         assert_eq!(
             normalize_base_url("https://api.xiaomimimo.com/v1/"),
             "https://api.xiaomimimo.com/v1"
         );
+        assert_eq!(normalize_base_url(""), "");
     }
 }

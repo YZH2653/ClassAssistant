@@ -132,7 +132,7 @@ async fn probe_mimo(config: &crate::domain::settings::ProviderConfig) -> TestRes
             message: "请先填写 API Key".to_string(),
         };
     }
-    let base_url = crate::asr::mimo::normalize_base_url(&config.base_url);
+    let base_url = config.effective_base_url();
     let client = match reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(15))
         .build()

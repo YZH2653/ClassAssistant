@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 
 import { useIpc } from "../hooks/useIpc";
 import { formatError } from "../lib/format";
+import { isKnownBaseUrl, resolveBaseUrl } from "../lib/mimo";
 import {
   DEFAULT_SETTINGS,
   type AppSettings,
@@ -37,7 +38,7 @@ function ProviderSection({ title, hint, value, onChange, onTest }: ProviderSecti
               className={input}
               type={showKey ? "text" : "password"}
               value={value.api_key}
-              placeholder="请输入你自己的 API Key"
+              placeholder="sk-…（按量付费）或 tp-… / ttp-…（Token Plan）"
               onChange={(e) => onChange({ ...value, api_key: e.currentTarget.value })}
             />
             <button className={btnGhost} onClick={() => setShowKey(!showKey)}>
@@ -50,7 +51,7 @@ function ProviderSection({ title, hint, value, onChange, onTest }: ProviderSecti
           <input
             className={`mt-1 ${input}`}
             value={value.base_url}
-            placeholder="接口地址（默认留空即可）"
+            placeholder="按密钥类型自动选择，可手动覆盖"
             onChange={(e) => onChange({ ...value, base_url: e.currentTarget.value })}
           />
         </label>
@@ -92,6 +93,17 @@ export function SettingsPage() {
     });
   };
 
+  // 改配置项：密钥变化时自动带出接口地址（用户手动改过地址则不覆盖）
+  const changeProvider = (kind: "asr" | "summarizer", next: ProviderConfig) => {
+    const prev = settings[kind];
+    const autoUrl = next.api_key !== prev.api_key && isKnownBaseUrl(prev.base_url);
+    const merged = autoUrl ? { ...next, base_url: resolveBaseUrl(next.api_key) } : next;
+    setSettings({ ...settings, [kind]: merged });
+    if (autoUrl) {
+      setMessage("已按密钥类型自动选择接口地址");
+    }
+  };
+
   const handleSave = async () => {
     try {
       await ipc.saveSettings(settings);
@@ -131,7 +143,8 @@ export function SettingsPage() {
   return (
     <div className="mx-auto max-w-3xl space-y-4 px-6 py-6">
       <div className="rounded-lg bg-indigo-50 px-4 py-3 text-sm text-indigo-700">
-        目前仅支持小米 MiMo API。每位使用者请填写自己的 API 密钥，密钥只保存在本机，不会上传。
+        目前仅支持小米 MiMo API（按量付费 sk- 开头 / Token Plan tp-、ttp- 开头）。每位使用者请填写自己的
+        API 密钥，密钥只保存在本机，不会上传。
       </div>
 
       <div className="rounded-xl border border-slate-200 bg-white p-5">
@@ -157,16 +170,42 @@ export function SettingsPage() {
             title="语音识别（小米 MiMo v2.5 ASR）"
             hint="上课时把老师讲话实时转成文字"
             value={settings.asr}
-            onChange={(next) => setSettings({ ...settings, asr: next })}
+            onChange={(next) => changeProvider("asr", next)}
             onTest={() => handleTest("asr")}
           />
           <ProviderSection
             title="知识点总结（小米 MiMo v2.6 flash）"
             hint="下课后自动生成本节课的知识点总结"
             value={settings.summarizer}
-            onChange={(next) => setSettings({ ...settings, summarizer: next })}
+            onChange={(next) => changeProvider("summarizer", next)}
             onTest={() => handleTest("summarizer")}
           />
+          <div className="rounded-xl border border-slate-200 bg-white p-5">
+            <h3 className="text-sm font-semibold text-slate-800">总结思考</h3>
+            <p className="mt-1 text-xs text-slate-500">
+              控制下课总结时是否深度思考。理科、需要推演的课程建议开启；文科讲座类课程可以选最快输出。
+            </p>
+            <input
+              type="range"
+              min={0}
+              max={1}
+              step={1}
+              value={settings.thinking ? 1 : 0}
+              onChange={(e) =>
+                setSettings({ ...settings, thinking: e.currentTarget.value === "1" })
+              }
+              className="mt-4 w-full accent-indigo-600"
+            />
+            <div className="mt-1 flex justify-between text-xs text-slate-500">
+              <span>最快输出（关思考）</span>
+              <span>深度思考（开思考）</span>
+            </div>
+            <p className="mt-2 text-xs text-indigo-600">
+              {settings.thinking
+                ? "当前：深度思考——总结更深入，耗时更长"
+                : "当前：最快输出——关闭思考，速度更快"}
+            </p>
+          </div>
         </>
       )}
 

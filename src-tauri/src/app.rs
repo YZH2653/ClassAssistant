@@ -36,7 +36,10 @@ pub fn build_providers(settings: &AppSettings) -> Providers {
     };
     let summarizer: Arc<dyn SummarizerProvider> = match settings.summarizer.provider {
         ProviderKind::Mock => Arc::new(MockSummarizer::default()),
-        ProviderKind::Mimo => Arc::new(MimoFlashSummarizer::new(settings.summarizer.clone())),
+        ProviderKind::Mimo => Arc::new(MimoFlashSummarizer::new(
+            settings.summarizer.clone(),
+            settings.thinking,
+        )),
     };
     Providers {
         capture,

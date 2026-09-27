@@ -11,6 +11,8 @@ export interface ProviderConfig {
 export interface AppSettings {
   asr: ProviderConfig;
   summarizer: ProviderConfig;
+  // 总结是否开启深度思考（true = 深度思考，false = 最快输出）
+  thinking: boolean;
 }
 
 export interface TestResult {
@@ -32,4 +34,5 @@ export const DEFAULT_SETTINGS: AppSettings = {
     base_url: "https://api.xiaomimimo.com/v1",
     model: "mimo-v2.6-flash",
   },
+  thinking: true,
 };

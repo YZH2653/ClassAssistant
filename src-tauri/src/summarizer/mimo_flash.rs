@@ -6,8 +6,8 @@ use async_trait::async_trait;
 use super::*;
 use crate::domain::settings::ProviderConfig;
 
-// 默认接口地址
-const DEFAULT_BASE_URL: &str = "https://api.xiaomimimo.com/v1";
+// 思考 + 回答的总输出上限
+const MAX_COMPLETION_TOKENS: u32 = 4096;
 // 总结提示词
 const SYSTEM_PROMPT: &str = "你是课堂总结助手。请把课堂转写整理成知识点总结，\
 只输出 Markdown，必须包含且仅包含这四个二级标题：\
@@ -15,11 +15,12 @@ const SYSTEM_PROMPT: &str = "你是课堂总结助手。请把课堂转写整理
 
 pub struct MimoFlashSummarizer {
     pub config: ProviderConfig,
+    pub thinking: bool,
 }
 
 impl MimoFlashSummarizer {
-    pub fn new(config: ProviderConfig) -> Self {
-        Self { config }
+    pub fn new(config: ProviderConfig, thinking: bool) -> Self {
+        Self { config, thinking }
     }
 }
 
@@ -34,13 +35,13 @@ impl SummarizerProvider for MimoFlashSummarizer {
         if api_key.is_empty() {
             return Err(SummaryError("请先在设置页填写 MiMo API Key".to_string()));
         }
-        let base_url = normalize_base_url(&self.config.base_url);
+        let base_url = self.config.effective_base_url();
         let client = reqwest::Client::builder()
             .timeout(Duration::from_secs(180))
             .build()
             .map_err(|e| SummaryError(format!("初始化失败：{e}")))?;
 
-        let body = build_summary_body(&self.config.model, &req);
+        let body = build_summary_body(&self.config.model, &req, self.thinking);
         let response = client
             .post(format!("{base_url}/chat/completions"))
             .bearer_auth(api_key)
@@ -76,8 +77,8 @@ impl SummarizerProvider for MimoFlashSummarizer {
     }
 }
 
-// 构造总结请求体
-pub fn build_summary_body(model: &str, req: &SummaryRequest) -> serde_json::Value {
+// 构造总结请求体（thinking 两档：enabled / disabled）
+pub fn build_summary_body(model: &str, req: &SummaryRequest, thinking: bool) -> serde_json::Value {
     serde_json::json!({
         "model": model,
         "messages": [
@@ -92,17 +93,10 @@ pub fn build_summary_body(model: &str, req: &SummaryRequest) -> serde_json::Valu
                 )
             }
         ],
-        "stream": false
+        "max_completion_tokens": MAX_COMPLETION_TOKENS,
+        "stream": false,
+        "thinking": { "type": if thinking { "enabled" } else { "disabled" } }
     })
-}
-
-fn normalize_base_url(base_url: &str) -> String {
-    let trimmed = base_url.trim().trim_end_matches('/');
-    if trimmed.is_empty() {
-        DEFAULT_BASE_URL.to_string()
-    } else {
-        trimmed.to_string()
-    }
 }
 
 fn truncate(text: &str, max: usize) -> String {
@@ -130,9 +124,10 @@ mod tests {
 
     #[test]
     fn summary_body_carries_transcript_and_model() {
-        let body = build_summary_body("mimo-v2.6-flash", &request());
+        let body = build_summary_body("mimo-v2.6-flash", &request(), true);
         assert_eq!(body["model"], "mimo-v2.6-flash");
         assert_eq!(body["stream"], false);
+        assert_eq!(body["max_completion_tokens"], 4096);
         let user = body["messages"][1]["content"].as_str().unwrap();
         assert!(user.contains("数据结构课"));
         assert!(user.contains("今天讲顺序表。"));
@@ -140,5 +135,13 @@ mod tests {
             .as_str()
             .unwrap()
             .contains("## 知识点"));
+    }
+
+    #[test]
+    fn thinking_switches_between_two_modes() {
+        let enabled = build_summary_body("mimo-v2.6-flash", &request(), true);
+        assert_eq!(enabled["thinking"]["type"], "enabled");
+        let disabled = build_summary_body("mimo-v2.6-flash", &request(), false);
+        assert_eq!(disabled["thinking"]["type"], "disabled");
     }
 }

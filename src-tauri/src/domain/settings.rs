@@ -32,12 +32,40 @@ impl Default for ProviderConfig {
     }
 }
 
+// 按量付费接口地址
+pub const PAY_AS_YOU_GO_BASE_URL: &str = "https://api.xiaomimimo.com/v1";
+// Token Plan 接口地址
+pub const TOKEN_PLAN_BASE_URL: &str = "https://token-plan-cn.xiaomimimo.com/v1";
+
+impl ProviderConfig {
+    // 生效的接口地址：非默认地址视为手动指定优先，否则按密钥前缀推断
+    pub fn effective_base_url(&self) -> String {
+        let trimmed = self.base_url.trim().trim_end_matches('/');
+        let key = self.api_key.trim();
+        let derived = if key.starts_with("tp-") || key.starts_with("ttp-") {
+            TOKEN_PLAN_BASE_URL
+        } else {
+            PAY_AS_YOU_GO_BASE_URL
+        };
+        let is_known = trimmed.is_empty()
+            || trimmed == PAY_AS_YOU_GO_BASE_URL
+            || trimmed == TOKEN_PLAN_BASE_URL;
+        if is_known {
+            derived.to_string()
+        } else {
+            trimmed.to_string()
+        }
+    }
+}
+
 // 应用 API 配置
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct AppSettings {
     pub asr: ProviderConfig,
     pub summarizer: ProviderConfig,
+    // 总结是否开启深度思考
+    pub thinking: bool,
 }
 
 // 连接测试结果
@@ -45,6 +73,47 @@ pub struct AppSettings {
 pub struct TestResult {
     pub ok: bool,
     pub message: String,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn base_url_prefers_manual_value() {
+        let config = ProviderConfig {
+            api_key: "tp-123".to_string(),
+            base_url: "https://example.test/v1/".to_string(),
+            ..ProviderConfig::default()
+        };
+        assert_eq!(config.effective_base_url(), "https://example.test/v1");
+    }
+
+    #[test]
+    fn base_url_resolved_from_key_prefix() {
+        let token_plan = ProviderConfig {
+            api_key: "tp-123".to_string(),
+            ..ProviderConfig::default()
+        };
+        assert_eq!(token_plan.effective_base_url(), TOKEN_PLAN_BASE_URL);
+
+        let team = ProviderConfig {
+            api_key: "ttp-456".to_string(),
+            ..ProviderConfig::default()
+        };
+        assert_eq!(team.effective_base_url(), TOKEN_PLAN_BASE_URL);
+
+        let pay_as_you_go = ProviderConfig {
+            api_key: "sk-789".to_string(),
+            ..ProviderConfig::default()
+        };
+        assert_eq!(pay_as_you_go.effective_base_url(), PAY_AS_YOU_GO_BASE_URL);
+    }
+
+    #[test]
+    fn thinking_defaults_to_enabled() {
+        assert!(AppSettings::default().thinking);
+    }
 }
 
 impl Default for AppSettings {
@@ -58,6 +127,7 @@ impl Default for AppSettings {
                 model: "mimo-v2.6-flash".to_string(),
                 ..ProviderConfig::default()
             },
+            thinking: true,
         }
     }
 }
