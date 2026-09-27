@@ -10,6 +10,14 @@ import { useIpc } from "./hooks/useIpc";
 import { useSessionEvents } from "./hooks/useSessionEvents";
 import { formatError } from "./lib/format";
 import { useSessionDispatch, useSessionState } from "./state/SessionContext";
+import type { AppSettings } from "./types/settings";
+
+const NEED_CONFIG = "请先在设置页配置 MiMo API 密钥（或切换到演示模式）";
+
+// 是否还没配好 API（mimo 模式下密钥为空）
+function needsApiConfig(settings: AppSettings): boolean {
+  return settings.asr.provider === "mimo" && settings.asr.api_key.trim().length === 0;
+}
 
 export default function App() {
   const [view, setView] = useState<"main" | "settings">("main");
@@ -18,6 +26,19 @@ export default function App() {
   const ipc = useIpc();
 
   useSessionEvents();
+
+  // 首次启动未配置 API 时引导进入设置页
+  useEffect(() => {
+    ipc
+      .getSettings()
+      .then((settings) => {
+        if (needsApiConfig(settings)) {
+          setView("settings");
+          dispatch({ type: "SET_ERROR", error: NEED_CONFIG });
+        }
+      })
+      .catch(() => {});
+  }, [dispatch, ipc]);
 
   // 回填当前会话（重载窗口后恢复）
   useEffect(() => {
@@ -36,6 +57,16 @@ export default function App() {
   }, [dispatch, ipc]);
 
   const handleStart = useCallback(async () => {
+    try {
+      const settings = await ipc.getSettings();
+      if (needsApiConfig(settings)) {
+        dispatch({ type: "SET_ERROR", error: NEED_CONFIG });
+        setView("settings");
+        return;
+      }
+    } catch {
+      // 读不到配置时交给后端校验
+    }
     dispatch({ type: "RESET" });
     try {
       await ipc.startClass();

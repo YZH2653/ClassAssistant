@@ -1,10 +1,19 @@
-import { useState } from "react";
-import { DEFAULT_SETTINGS, type AppSettings, type ProviderConfig } from "../types/settings";
+import { useEffect, useState } from "react";
+
+import { useIpc } from "../hooks/useIpc";
+import { formatError } from "../lib/format";
+import {
+  DEFAULT_SETTINGS,
+  type AppSettings,
+  type ProviderConfig,
+  type ProviderKind,
+} from "../types/settings";
 
 const input =
   "w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-800 focus:border-indigo-400 focus:outline-none";
 const btn = "rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-500";
-const btnGhost = "rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm text-slate-700 hover:bg-slate-50";
+const btnGhost =
+  "rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm text-slate-700 hover:bg-slate-50";
 
 interface ProviderSectionProps {
   title: string;
@@ -62,39 +71,110 @@ function ProviderSection({ title, hint, value, onChange, onTest }: ProviderSecti
 }
 
 export function SettingsPage() {
+  const ipc = useIpc();
   const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
   const [message, setMessage] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    ipc
+      .getSettings()
+      .then((loaded) => setSettings(loaded))
+      .catch((err) => setMessage(formatError(err)))
+      .finally(() => setLoading(false));
+  }, [ipc]);
+
+  const setProvider = (provider: ProviderKind) => {
+    setSettings({
+      ...settings,
+      asr: { ...settings.asr, provider },
+      summarizer: { ...settings.summarizer, provider },
+    });
+  };
+
+  const handleSave = async () => {
+    try {
+      await ipc.saveSettings(settings);
+      setMessage("已保存到本机 config.json");
+    } catch (err) {
+      setMessage(formatError(err));
+    }
+  };
+
+  const handleTest = async (kind: "asr" | "summarizer") => {
+    try {
+      const result = await ipc.testProviderConnection(kind);
+      setMessage(`${kind === "asr" ? "ASR" : "总结"}：${result.message}`);
+    } catch (err) {
+      setMessage(formatError(err));
+    }
+  };
+
+  const handleReset = async () => {
+    setSettings(DEFAULT_SETTINGS);
+    try {
+      await ipc.saveSettings(DEFAULT_SETTINGS);
+      setMessage("已恢复默认（API Key 已清空）");
+    } catch (err) {
+      setMessage(formatError(err));
+    }
+  };
+
+  const isMock = settings.asr.provider === "mock";
+  const choice = (active: boolean) =>
+    `rounded-lg px-4 py-2 text-sm ${
+      active
+        ? "bg-indigo-600 text-white"
+        : "border border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
+    }`;
 
   return (
     <div className="mx-auto max-w-3xl space-y-4 px-6 py-6">
       <div className="rounded-lg bg-indigo-50 px-4 py-3 text-sm text-indigo-700">
         目前仅支持小米 MiMo API。每位使用者请填写自己的 API 密钥，密钥只保存在本机，不会上传。
       </div>
-      <ProviderSection
-        title="语音识别（小米 MiMo v2.5 ASR）"
-        hint="上课时把老师讲话实时转成文字"
-        value={settings.asr}
-        onChange={(next) => setSettings({ ...settings, asr: next })}
-        onTest={() => setMessage("（骨架演示）测试连接：等步骤 13 接入真实配置")}
-      />
-      <ProviderSection
-        title="知识点总结（小米 MiMo v2.6 flash）"
-        hint="下课后自动生成本节课的知识点总结"
-        value={settings.summarizer}
-        onChange={(next) => setSettings({ ...settings, summarizer: next })}
-        onTest={() => setMessage("（骨架演示）测试连接：等步骤 13 接入真实配置")}
-      />
+
+      <div className="rounded-xl border border-slate-200 bg-white p-5">
+        <h3 className="text-sm font-semibold text-slate-800">识别引擎</h3>
+        <div className="mt-3 flex gap-2">
+          <button className={choice(!isMock)} onClick={() => setProvider("mimo")}>
+            小米 MiMo
+          </button>
+          <button className={choice(isMock)} onClick={() => setProvider("mock")}>
+            本地演示（Mock）
+          </button>
+        </div>
+        <p className="mt-2 text-xs text-slate-500">
+          {isMock
+            ? "演示模式：不需要密钥，用于体验完整流程。"
+            : "使用小米 MiMo 云端 API，请填写下方密钥。"}
+        </p>
+      </div>
+
+      {!isMock && (
+        <>
+          <ProviderSection
+            title="语音识别（小米 MiMo v2.5 ASR）"
+            hint="上课时把老师讲话实时转成文字"
+            value={settings.asr}
+            onChange={(next) => setSettings({ ...settings, asr: next })}
+            onTest={() => handleTest("asr")}
+          />
+          <ProviderSection
+            title="知识点总结（小米 MiMo v2.6 flash）"
+            hint="下课后自动生成本节课的知识点总结"
+            value={settings.summarizer}
+            onChange={(next) => setSettings({ ...settings, summarizer: next })}
+            onTest={() => handleTest("summarizer")}
+          />
+        </>
+      )}
+
       <div className="flex items-center gap-3">
-        <button className={btn} onClick={() => setMessage("（骨架演示）已保存：等步骤 13 写入 config.json")}>
+        <button className={btn} onClick={handleSave} disabled={loading}>
           保存
         </button>
-        <button
-          className={btnGhost}
-          onClick={() => {
-            setSettings(DEFAULT_SETTINGS);
-            setMessage("已恢复默认（API Key 已清空）");
-          }}
-        >
+        <button className={btnGhost} onClick={handleReset} disabled={loading}>
           恢复默认
         </button>
         {message && <span className="text-sm text-slate-500">{message}</span>}

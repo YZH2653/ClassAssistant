@@ -39,6 +39,13 @@ pub async fn start_class(
     state: State<'_, AppState>,
     title: Option<String>,
 ) -> Result<SessionDetail, AppError> {
+    let settings = state.config_store.load();
+    if settings.asr.provider == ProviderKind::Mimo && settings.asr.api_key.trim().is_empty() {
+        return Err(AppError::new(
+            ErrorScope::Session,
+            "请先在设置页配置 MiMo API 密钥",
+        ));
+    }
     state.manager.start(title).await
 }
 

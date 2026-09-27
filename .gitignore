@@ -16,6 +16,10 @@ config.json
 # 工具目录（体积大，不入库）
 .claude/settings.local.json
 .claude/skills/ui-ux-pro-max/
+.claude/skills/taste-skill/
+.claude/skills/impeccable-skill/
+.claude/skills/planning-with-files/
+.claude/skills/andrej-karpathy-skills/
 
 # 系统 / 编辑器
 .DS_Store
