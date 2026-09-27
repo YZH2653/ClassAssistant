@@ -26,6 +26,9 @@
   "bundle": {
     "active": true,
     "targets": "all",
+    "resources": {
+      "libs/WebView2Loader.dll": "WebView2Loader.dll"
+    },
     "windows": {
       "webviewInstallMode": {
         "type": "downloadBootstrapper"
