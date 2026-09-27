@@ -10,3 +10,12 @@ export function formatClock(iso: string | null): string {
   if (!iso) return "—";
   return new Date(iso).toLocaleString("zh-CN", { hour12: false });
 }
+
+// 后端错误对象转可读文案
+export function formatError(err: unknown): string {
+  if (typeof err === "string") return err;
+  if (err && typeof err === "object" && "message" in err) {
+    return String((err as { message: unknown }).message);
+  }
+  return String(err);
+}

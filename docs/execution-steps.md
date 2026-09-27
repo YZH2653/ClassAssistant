@@ -47,7 +47,7 @@
 
 ## 七、M5 前端 UI 与 Mock 链路联调
 
-- [ ] 步骤 12：前端接 IPC（SessionContext + 事件订阅 + 主视图联调 Mock 链路） → `feat: 前端接入 IPC 打通 Mock 全链路`
+- [x] 步骤 12：前端接 IPC（SessionContext + 事件订阅 + 主视图联调 Mock 链路） → `feat: 前端接入 IPC 打通 Mock 全链路`
 - [ ] 步骤 13：设置页联调（读写 config.json、未配置拦截、测试连接、重启持久化） → `feat: 设置页面 API 配置管理`
 
 ## 八、M6 验证清单与 v1.0.0.0 发布流程
