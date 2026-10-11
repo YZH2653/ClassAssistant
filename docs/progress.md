@@ -68,7 +68,7 @@
 
 ### 推送待重试
 
-- [ ] `eab1c71` `2bb5d08` 等 v1.1.0.0 新提交 push 时网络中断（Connection was reset），网络恢复后 `git push origin v1.1.0.0` 重试
+- （无，`eab1c71`–`e12ea37` 已于网络恢复后推送成功）
 
 - [ ] 涵涵提供小米 MiMo API 文档（v2.5 ASR、v2.6 flash）——真实对接前置
 - [ ] 涵涵测试确认 v1.0.0.0 后执行步骤 15 发布
