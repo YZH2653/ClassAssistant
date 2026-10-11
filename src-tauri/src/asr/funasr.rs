@@ -45,8 +45,11 @@ fn resolve_url(config: &ProviderConfig) -> String {
     }
 }
 
-// 构造连接请求（带 binary 子协议）
-fn build_request(url: &str) -> Result<tokio_tungstenite::tungstenite::http::Request<()>, AsrError> {
+// 构造连接请求（with_subprotocol 控制是否声明 binary 子协议）
+fn build_request(
+    url: &str,
+    with_subprotocol: bool,
+) -> Result<tokio_tungstenite::tungstenite::http::Request<()>, AsrError> {
     if !(url.starts_with("ws://") || url.starts_with("wss://")) {
         return Err(AsrError(format!(
             "FunASR 服务地址无效：{url}（应以 ws:// 或 wss:// 开头）"
@@ -55,24 +58,48 @@ fn build_request(url: &str) -> Result<tokio_tungstenite::tungstenite::http::Requ
     let mut request = url
         .into_client_request()
         .map_err(|e| AsrError(format!("FunASR 服务地址无效：{e}")))?;
-    request.headers_mut().insert(
-        "Sec-WebSocket-Protocol",
-        "binary"
-            .parse()
-            .map_err(|e: tokio_tungstenite::tungstenite::http::header::InvalidHeaderValue| {
-                AsrError(format!("FunASR 协议头无效：{e}"))
-            })?,
-    );
+    if with_subprotocol {
+        request.headers_mut().insert(
+            "Sec-WebSocket-Protocol",
+            "binary"
+                .parse()
+                .map_err(|e: tokio_tungstenite::tungstenite::http::header::InvalidHeaderValue| {
+                    AsrError(format!("FunASR 协议头无效：{e}"))
+                })?,
+        );
+    }
     Ok(request)
+}
+
+// 是否子协议协商不匹配（tungstenite 握手内部校验回显，遇此换策略重连）
+fn is_subprotocol_error(e: &tokio_tungstenite::tungstenite::Error) -> bool {
+    matches!(
+        e,
+        tokio_tungstenite::tungstenite::Error::Protocol(
+            tokio_tungstenite::tungstenite::error::ProtocolError::SecWebSocketSubProtocolError(_)
+        )
+    )
+}
+
+// 连接服务：先不声明子协议（RFC 6455 允许服务端不回显，FunASR 即如此）；
+// 若对端回显了子协议（部署侧回显代理场景）则改带 binary 重连一次
+async fn connect_ws(url: &str) -> Result<WsStream, AsrError> {
+    let fail = |_| {
+        AsrError("无法连接 FunASR 服务，请确认部署机已启动（D:\\FunASR\\start.bat）".to_string())
+    };
+    match connect_async(build_request(url, false)?).await {
+        Ok((ws, _)) => Ok(ws),
+        Err(e) if is_subprotocol_error(&e) => {
+            let (ws, _) = connect_async(build_request(url, true)?).await.map_err(fail)?;
+            Ok(ws)
+        }
+        Err(e) => Err(fail(e)),
+    }
 }
 
 // 探测服务连通性（连上即关）
 pub async fn probe(url: &str) -> Result<(), AsrError> {
-    let request = build_request(url)?;
-    let (ws, _) = connect_async(request).await.map_err(|_| {
-        AsrError("无法连接 FunASR 服务，请确认部署机已启动（D:\\FunASR\\start.bat）".to_string())
-    })?;
-    drop(ws);
+    drop(connect_ws(url).await?);
     Ok(())
 }
 
@@ -162,10 +189,7 @@ impl AsrProvider for FunasrAsrProvider {
 
     async fn start(&self, cfg: AsrConfig) -> Result<Box<dyn AsrStream>, AsrError> {
         let url = resolve_url(&self.config);
-        let request = build_request(&url)?;
-        let (ws, _) = connect_async(request).await.map_err(|_| {
-            AsrError("无法连接 FunASR 服务，请确认部署机已启动（D:\\FunASR\\start.bat）".to_string())
-        })?;
+        let ws = connect_ws(&url).await?;
 
         let (chunk_tx, chunk_rx) = mpsc::channel(32);
         let (event_tx, event_rx) = mpsc::channel(64);
@@ -429,5 +453,86 @@ mod tests {
             ..ProviderConfig::default()
         };
         assert_eq!(resolve_url(&custom), "ws://192.168.1.8:10096");
+    }
+
+    #[test]
+    fn subprotocol_header_is_optional() {
+        let plain = build_request("ws://localhost:10096", false).unwrap();
+        assert!(plain.headers().get("Sec-WebSocket-Protocol").is_none());
+        let with = build_request("ws://localhost:10096", true).unwrap();
+        assert_eq!(
+            with.headers().get("Sec-WebSocket-Protocol").unwrap(),
+            "binary"
+        );
+    }
+
+    // 起一个最小假 WebSocket 服务端：完成101握手即挂起（echo_subprotocol 控制是否回显 binary），返回 ws URL
+    async fn spawn_fake_ws_server(echo_subprotocol: bool) -> String {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let url = format!("ws://127.0.0.1:{}", listener.local_addr().unwrap().port());
+        tokio::spawn(async move {
+            loop {
+                let Ok((mut sock, _)) = listener.accept().await else {
+                    break;
+                };
+                tokio::spawn(async move {
+                    let mut buf = Vec::new();
+                    let mut tmp = [0u8; 1024];
+                    // 读到请求头结束
+                    loop {
+                        let Ok(n) = sock.read(&mut tmp).await else {
+                            return;
+                        };
+                        if n == 0 {
+                            return;
+                        }
+                        buf.extend_from_slice(&tmp[..n]);
+                        if buf.windows(4).any(|w| w == b"\r\n\r\n") {
+                            break;
+                        }
+                    }
+                    let text = String::from_utf8_lossy(&buf);
+                    let key = text
+                        .lines()
+                        .find_map(|line| {
+                            let (name, value) = line.split_once(':')?;
+                            name.trim()
+                                .eq_ignore_ascii_case("sec-websocket-key")
+                                .then(|| value.trim().to_string())
+                        })
+                        .expect("请求应带 Sec-WebSocket-Key");
+                    let accept = tokio_tungstenite::tungstenite::handshake::derive_accept_key(
+                        key.as_bytes(),
+                    );
+                    let mut resp = format!(
+                        "HTTP/1.1 101 Switching Protocols\r\n\
+                         Upgrade: websocket\r\n\
+                         Connection: Upgrade\r\n\
+                         Sec-WebSocket-Accept: {accept}\r\n"
+                    );
+                    if echo_subprotocol {
+                        resp.push_str("Sec-WebSocket-Protocol: binary\r\n");
+                    }
+                    resp.push_str("\r\n");
+                    let _ = sock.write_all(resp.as_bytes()).await;
+                    // 保持连接一段时间供客户端完成握手
+                    tokio::time::sleep(Duration::from_millis(300)).await;
+                });
+            }
+        });
+        url
+    }
+
+    #[tokio::test]
+    async fn connects_when_server_omits_subprotocol_echo() {
+        let url = spawn_fake_ws_server(false).await;
+        probe(&url).await.expect("无子协议回显也应连通（RFC 允许）");
+    }
+
+    #[tokio::test]
+    async fn connects_when_server_echoes_subprotocol() {
+        let url = spawn_fake_ws_server(true).await;
+        probe(&url).await.expect("回显代理场景应自动重连连通");
     }
 }
