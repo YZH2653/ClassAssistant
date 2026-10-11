@@ -58,7 +58,7 @@
 
 ### 等待外部输入
 
-- [ ] 2026-10-11 `v1.1.0.0` 分支 push 网络失败（Connection was reset），待重试
+- [ ] 涵涵在 Redmi 上联调 FunASR（用 `ClassAssistant-FunASR-联调文档.md`）
 
 - [ ] 涵涵提供小米 MiMo API 文档（v2.5 ASR、v2.6 flash）——真实对接前置
 - [ ] 涵涵测试确认 v1.0.0.0 后执行步骤 15 发布
