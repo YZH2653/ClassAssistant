@@ -46,6 +46,10 @@ pub enum ManagerCmd {
         resp: oneshot::Sender<Result<(), AppError>>,
     },
     Asr(AsrEvent),
+    // ASR 管线结束（此前事件已全部入队），触发定稿统计
+    AsrDone {
+        session_id: String,
+    },
     Level {
         level: f32,
     },
@@ -134,6 +138,10 @@ struct SessionCtx {
     paths: SessionPaths,
     capture: Option<Box<dyn CaptureHandle>>,
     started: Instant,
+    // ASR 管线是否已完全收尾（尾段事件已入队处理完）
+    asr_done: bool,
+    // 是否已定稿（统计/落盘/发起总结只做一次）
+    finalized: bool,
 }
 
 struct Actor {
@@ -168,6 +176,7 @@ impl Actor {
                     let _ = resp.send(self.handle_reset());
                 }
                 ManagerCmd::Asr(event) => self.handle_asr(event),
+                ManagerCmd::AsrDone { session_id } => self.handle_asr_done(session_id),
                 ManagerCmd::Level { level } => self.handle_level(level),
                 ManagerCmd::SummaryDone(result) => self.handle_summary(result),
             }
@@ -256,8 +265,9 @@ impl Actor {
 
         let asr = providers.asr.clone();
         let cmd_tx = self.cmd_tx.clone();
+        let pipeline_sid = id.clone();
         tokio::spawn(async move {
-            run_pipeline(asr, tok_rx, cmd_tx).await;
+            run_pipeline(asr, tok_rx, cmd_tx, pipeline_sid).await;
         });
 
         self.ctx = Some(SessionCtx {
@@ -265,6 +275,8 @@ impl Actor {
             paths,
             capture: Some(capture),
             started: Instant::now(),
+            asr_done: false,
+            finalized: false,
         });
         self.emit_state(SessionStatus::Recording, None);
         Ok(self.detail().expect("刚创建的会话必然存在"))
@@ -273,15 +285,8 @@ impl Actor {
     async fn handle_end(&mut self) -> Result<SessionSnapshot, AppError> {
         self.machine.handle(SessionEvent::End)?;
 
-        let segment_count = self.segments.len() as u32;
-        let word_count = self
-            .segments
-            .iter()
-            .map(|seg| seg.text.chars().count() as u32)
-            .sum();
-
         // 先取走需要的字段，结束对 self.ctx 的借用
-        let (id, title, started_at, duration_ms) = {
+        let asr_done = {
             let Some(ctx) = self.ctx.as_mut() else {
                 return Err(AppError::new(ErrorScope::Session, "没有进行中的会话"));
             };
@@ -292,6 +297,65 @@ impl Actor {
             ctx.meta.status = SessionStatus::Summarizing;
             ctx.meta.ended_at = Some(now.to_rfc3339());
             ctx.meta.duration_ms = ctx.started.elapsed().as_millis() as u64;
+            ctx.asr_done
+        };
+
+        self.emit_state(SessionStatus::Summarizing, None);
+
+        if asr_done {
+            // ASR 管线已提前收尾（连接中断等），立即定稿
+            self.finalize_session();
+        } else {
+            // 等 ASR 尾段事件（FunASR 结束帧后约 2 秒收尾定稿）入队处理完再定稿；
+            // 8 秒兜底：worker 挂死时也要出总结
+            let cmd_tx = self.cmd_tx.clone();
+            let session_id = self
+                .ctx
+                .as_ref()
+                .map(|c| c.meta.id.clone())
+                .unwrap_or_default();
+            tokio::spawn(async move {
+                tokio::time::sleep(std::time::Duration::from_secs(8)).await;
+                let _ = cmd_tx
+                    .send(ManagerCmd::AsrDone { session_id })
+                    .await;
+            });
+        }
+
+        Ok(self.snapshot())
+    }
+
+    // ASR 管线收尾完成（尾段事件已全部入队，FIFO 保证先于本命令处理）
+    fn handle_asr_done(&mut self, session_id: String) {
+        {
+            let Some(ctx) = self.ctx.as_mut() else {
+                return;
+            };
+            if ctx.meta.id != session_id {
+                return; // 旧会话的兜底定时器，忽略
+            }
+            ctx.asr_done = true;
+        }
+        self.finalize_session();
+    }
+
+    // 定稿：统计 → 落盘 → 发起总结（幂等，只做一次；仅在已下课后执行）
+    fn finalize_session(&mut self) {
+        let segment_count = self.segments.len() as u32;
+        let word_count = self
+            .segments
+            .iter()
+            .map(|seg| seg.text.chars().count() as u32)
+            .sum();
+
+        let (id, title, started_at, duration_ms) = {
+            let Some(ctx) = self.ctx.as_mut() else {
+                return;
+            };
+            if ctx.finalized || ctx.meta.status != SessionStatus::Summarizing {
+                return;
+            }
+            ctx.finalized = true;
             ctx.meta.segment_count = segment_count;
             ctx.meta.word_count = word_count;
             (
@@ -302,12 +366,15 @@ impl Actor {
             )
         };
 
-        self.store.flush(&id).map_err(store_err)?;
+        if let Err(e) = self.store.flush(&id) {
+            self.emit_error(ErrorScope::Storage, e.0);
+        }
         if let Some(ctx) = self.ctx.as_ref() {
-            self.store.write_meta(&ctx.meta).map_err(store_err)?;
+            if let Err(e) = self.store.write_meta(&ctx.meta) {
+                self.emit_error(ErrorScope::Storage, e.0);
+            }
         }
 
-        self.emit_state(SessionStatus::Summarizing, None);
         self.emit(UiEvent::SummaryProgress(SummaryProgressEvent {
             session_id: id.clone(),
             stage: "collecting".to_string(),
@@ -321,14 +388,16 @@ impl Actor {
             duration_ms,
             transcript_markdown: self.transcript_markdown(),
         };
-        let summarizer = self.current_providers()?.summarizer.clone();
+        let Ok(providers) = self.current_providers() else {
+            self.emit_error(ErrorScope::Summary, "内部错误：无法获取总结服务".to_string());
+            return;
+        };
+        let summarizer = providers.summarizer.clone();
         let cmd_tx = self.cmd_tx.clone();
         tokio::spawn(async move {
             let result = summarizer.summarize(request).await;
             let _ = cmd_tx.send(ManagerCmd::SummaryDone(result)).await;
         });
-
-        Ok(self.snapshot())
     }
 
     fn handle_reset(&mut self) -> Result<(), AppError> {
@@ -479,6 +548,7 @@ async fn run_pipeline(
     asr: Arc<dyn AsrProvider>,
     mut frames: mpsc::Receiver<AudioFrame>,
     cmd_tx: mpsc::Sender<ManagerCmd>,
+    session_id: String,
 ) {
     let config = AsrConfig {
         sample_rate: 16000,
@@ -491,6 +561,7 @@ async fn run_pipeline(
             let _ = cmd_tx
                 .send(ManagerCmd::Asr(AsrEvent::Error { message: e.0 }))
                 .await;
+            let _ = cmd_tx.send(ManagerCmd::AsrDone { session_id }).await;
             return;
         }
     };
@@ -544,6 +615,8 @@ async fn run_pipeline(
             }))
             .await;
     }
+    // 通知会话管理器：ASR 事件已全部入队（FIFO 保证尾段先被处理），可以定稿
+    let _ = cmd_tx.send(ManagerCmd::AsrDone { session_id }).await;
 }
 
 // 毫秒转 HH:MM:SS
@@ -574,7 +647,7 @@ fn whoami() -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::asr::MockAsrProvider;
+    use crate::asr::{AsrError, AsrStream, MockAsrProvider};
     use crate::audio::MockAudioCapture;
     use crate::storage::fs_store::FsSessionStore;
     use crate::summarizer::MockSummarizer;
@@ -586,6 +659,67 @@ mod tests {
             asr: Arc::new(MockAsrProvider::fast()),
             summarizer: Arc::new(MockSummarizer::fast()),
         })))
+    }
+
+    // 模拟 FunASR：末段定稿在 finish() 之后才到达（收尾窗口）
+    struct LateTailProvider;
+
+    struct LateTailStream {
+        rx: mpsc::Receiver<AsrEvent>,
+        finish_tx: Option<oneshot::Sender<()>>,
+    }
+
+    #[async_trait::async_trait]
+    impl AsrStream for LateTailStream {
+        async fn push_audio(&mut self, _frame: AudioFrame) -> Result<(), AsrError> {
+            Ok(())
+        }
+
+        async fn finish(&mut self) -> Result<(), AsrError> {
+            if let Some(tx) = self.finish_tx.take() {
+                let _ = tx.send(());
+            }
+            Ok(())
+        }
+
+        async fn next_event(&mut self) -> Option<AsrEvent> {
+            self.rx.recv().await
+        }
+    }
+
+    #[async_trait::async_trait]
+    impl AsrProvider for LateTailProvider {
+        fn name(&self) -> &'static str {
+            "late-tail-mock"
+        }
+
+        async fn start(&self, _cfg: AsrConfig) -> Result<Box<dyn AsrStream>, AsrError> {
+            let (tx, rx) = mpsc::channel(16);
+            let (fin_tx, fin_rx) = oneshot::channel();
+            tokio::spawn(async move {
+                let _ = tx
+                    .send(AsrEvent::Segment {
+                        text: "第一句。".to_string(),
+                        start_ms: 0,
+                        end_ms: 100,
+                    })
+                    .await;
+                // 等 finish()（下课）后才吐末段，复现收尾定稿时序
+                let _ = fin_rx.await;
+                let _ = tx
+                    .send(AsrEvent::Segment {
+                        text: "末句定稿。".to_string(),
+                        start_ms: 100,
+                        end_ms: 200,
+                    })
+                    .await;
+                let _ = tx.send(AsrEvent::Ended).await;
+            });
+            Ok(Box::new(LateTailStream {
+                rx,
+                finish_tx: Some(fin_tx),
+            }))
+        }
     }
 
     #[tokio::test]
@@ -667,6 +801,89 @@ mod tests {
 
         manager.reset().await.unwrap();
         assert!(manager.get().await.is_none());
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[tokio::test]
+    async fn tail_segment_after_end_still_reaches_summary_and_disk() {
+        let root = std::env::temp_dir().join(format!("ca_tail_test_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).unwrap();
+
+        let providers: SharedProviders = Arc::new(std::sync::RwLock::new(Arc::new(Providers {
+            capture: Arc::new(MockAudioCapture::default()),
+            asr: Arc::new(LateTailProvider),
+            summarizer: Arc::new(MockSummarizer::fast()),
+        })));
+        let (sink, mut events) = mpsc::unbounded_channel();
+        let (manager, actor) =
+            SessionManager::create(providers, Arc::new(FsSessionStore::new(&root)), sink);
+        tokio::spawn(actor);
+
+        manager
+            .start(Some("尾段测试".into()), CaptureOptions::default())
+            .await
+            .unwrap();
+
+        // 等首段到达
+        let mut got_first = false;
+        for _ in 0..100 {
+            if let Some(detail) = manager.get().await {
+                if !detail.segments.is_empty() {
+                    got_first = true;
+                    break;
+                }
+            }
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+        assert!(got_first, "首段未产生");
+
+        // 下课：末段「末句定稿。」在 finish() 后才产生
+        let snapshot = manager.end().await.unwrap();
+        assert_eq!(snapshot.meta.status, SessionStatus::Summarizing);
+
+        let mut completed = false;
+        for _ in 0..200 {
+            if let Some(detail) = manager.get().await {
+                if detail.snapshot.meta.status == SessionStatus::Completed {
+                    completed = true;
+                    break;
+                }
+            }
+            tokio::time::sleep(Duration::from_millis(25)).await;
+        }
+        assert!(completed, "总结未完成");
+
+        let dir = std::path::PathBuf::from(
+            manager
+                .get()
+                .await
+                .unwrap()
+                .snapshot
+                .data_dir
+                .unwrap()
+                .to_string(),
+        );
+        // 末段计入 meta 统计
+        let meta: SessionMeta =
+            serde_json::from_str(&std::fs::read_to_string(dir.join("meta.json")).unwrap()).unwrap();
+        assert_eq!(meta.segment_count, 2, "末段未计入 segment_count");
+        assert_eq!(meta.word_count, 9, "末段未计入 word_count");
+        // 末段落盘 transcript.md
+        let transcript = std::fs::read_to_string(dir.join("transcript.md")).unwrap();
+        assert!(transcript.contains("末句定稿。"), "末段未落盘 transcript.md");
+        // 末段进总结请求（Mock 总结会引用末行）
+        let summary = std::fs::read_to_string(dir.join("summary.md")).unwrap();
+        assert!(summary.contains("末句定稿。"), "末段未进总结请求");
+
+        let mut saw_ready = false;
+        while let Ok(event) = events.try_recv() {
+            if matches!(event, UiEvent::SummaryReady(_)) {
+                saw_ready = true;
+            }
+        }
+        assert!(saw_ready);
 
         let _ = std::fs::remove_dir_all(&root);
     }
