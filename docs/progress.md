@@ -46,6 +46,7 @@
 | 2026-10-11 | 测试包 | `npm run tauri build` 打 v1.1.0.0 测试包到 output/（绿色版 + 安装版 + 测试 zip） | `98b0c45` |
 | 2026-10-11 | v1.1.0.0 | 修复 FunASR 握手子协议回显依赖（tungstenite 0.26 校验 vs WebSocket++ 不回显；先不声明子协议、遇回显自动重连，含假服务端回归测试） | `eab1c71` |
 | 2026-10-11 | v1.1.0.0 | 新增「留存最近一次总结」（复位误触后仍可复制，last_summary.md 持久化 + 空闲态展示） | `2bb5d08` |
+| 2026-10-11 | 测试包 2 号 | `npm run tauri build` 打 `ClassAssistant-v1.1.0.0-test2.zip`（含握手修复 + 留存总结），交涵涵拷去 Redmi 测试 | 本提交 |
 
 ## 三、进行中事项
 
