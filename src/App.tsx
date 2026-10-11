@@ -12,11 +12,22 @@ import { formatError } from "./lib/format";
 import { useSessionDispatch, useSessionState } from "./state/SessionContext";
 import type { AppSettings } from "./types/settings";
 
-const NEED_CONFIG = "请先在设置页配置 MiMo API 密钥（或切换到演示模式）";
-
-// 是否还没配好 API（mimo 模式下密钥为空）
-function needsApiConfig(settings: AppSettings): boolean {
-  return settings.asr.provider === "mimo" && settings.asr.api_key.trim().length === 0;
+// 还缺哪个 API 密钥（不缺返回 null）
+function missingConfig(settings: AppSettings): string | null {
+  const asrNeedsKey =
+    settings.asr.provider === "mimo" && settings.asr.api_key.trim().length === 0;
+  const summaryNeedsKey =
+    settings.summarizer.provider === "mimo" && settings.summarizer.api_key.trim().length === 0;
+  if (asrNeedsKey && summaryNeedsKey) {
+    return "请先在设置页配置识别与总结用的小米 MiMo API 密钥";
+  }
+  if (asrNeedsKey) {
+    return "请先在设置页配置识别用的小米 MiMo API 密钥";
+  }
+  if (summaryNeedsKey) {
+    return "请先在设置页配置总结用的小米 MiMo API 密钥";
+  }
+  return null;
 }
 
 export default function App() {
@@ -32,9 +43,10 @@ export default function App() {
     ipc
       .getSettings()
       .then((settings) => {
-        if (needsApiConfig(settings)) {
+        const missing = missingConfig(settings);
+        if (missing) {
           setView("settings");
-          dispatch({ type: "SET_ERROR", error: NEED_CONFIG });
+          dispatch({ type: "SET_ERROR", error: missing });
         }
       })
       .catch(() => {});
@@ -59,8 +71,9 @@ export default function App() {
   const handleStart = useCallback(async () => {
     try {
       const settings = await ipc.getSettings();
-      if (needsApiConfig(settings)) {
-        dispatch({ type: "SET_ERROR", error: NEED_CONFIG });
+      const missing = missingConfig(settings);
+      if (missing) {
+        dispatch({ type: "SET_ERROR", error: missing });
         setView("settings");
         return;
       }

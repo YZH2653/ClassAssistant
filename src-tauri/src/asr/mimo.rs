@@ -247,8 +247,16 @@ async fn emit_segments(text: &str, start_ms: u64, end_ms: u64, event_tx: &mpsc::
     }
 }
 
+// 默认 ASR 模型名
+pub const DEFAULT_ASR_MODEL: &str = "mimo-v2.5-asr";
+
 // 构造 ASR 请求体
 pub fn build_asr_body(model: &str, data_uri: &str, language: &str) -> serde_json::Value {
+    let model = if model.trim().is_empty() {
+        DEFAULT_ASR_MODEL
+    } else {
+        model.trim()
+    };
     serde_json::json!({
         "model": model,
         "messages": [{
@@ -337,6 +345,12 @@ mod tests {
             body["messages"][0]["content"][0]["input_audio"]["data"],
             "data:audio/wav;base64,AAAA"
         );
+    }
+
+    #[test]
+    fn empty_model_falls_back_to_default() {
+        let body = build_asr_body("", "data:audio/wav;base64,AAAA", "auto");
+        assert_eq!(body["model"], DEFAULT_ASR_MODEL);
     }
 
     #[test]

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 
 import { useIpc } from "../hooks/useIpc";
 import { formatError } from "../lib/format";
-import { isKnownBaseUrl, resolveBaseUrl } from "../lib/mimo";
+import { FUNASR_BASE_URL, isKnownBaseUrl, resolveBaseUrl } from "../lib/mimo";
 import { useSettings } from "../state/SettingsContext";
 import {
   DEFAULT_SETTINGS,
@@ -22,47 +22,64 @@ interface ProviderSectionProps {
   value: ProviderConfig;
   onChange: (next: ProviderConfig) => void;
   onTest: () => void;
+  showApiKey: boolean;
+  showModel: boolean;
+  addressPlaceholder: string;
 }
 
-function ProviderSection({ title, hint, value, onChange, onTest }: ProviderSectionProps) {
+function ProviderSection({
+  title,
+  hint,
+  value,
+  onChange,
+  onTest,
+  showApiKey,
+  showModel,
+  addressPlaceholder,
+}: ProviderSectionProps) {
   const [showKey, setShowKey] = useState(false);
   return (
     <div className="rounded-xl border border-slate-200 bg-white p-5">
       <h3 className="text-sm font-semibold text-slate-800">{title}</h3>
       <p className="mt-1 text-xs text-slate-500">{hint}</p>
       <div className="mt-4 space-y-3">
+        {showApiKey && (
+          <label className="block text-xs text-slate-500">
+            API Key
+            <div className="mt-1 flex gap-2">
+              <input
+                className={input}
+                type={showKey ? "text" : "password"}
+                value={value.api_key}
+                placeholder="sk-…（按量付费）或 tp-… / ttp-…（Token Plan）"
+                onChange={(e) => onChange({ ...value, api_key: e.currentTarget.value })}
+              />
+              <button className={btnGhost} onClick={() => setShowKey(!showKey)}>
+                {showKey ? "隐藏" : "显示"}
+              </button>
+            </div>
+          </label>
+        )}
         <label className="block text-xs text-slate-500">
-          API Key
-          <div className="mt-1 flex gap-2">
-            <input
-              className={input}
-              type={showKey ? "text" : "password"}
-              value={value.api_key}
-              placeholder="sk-…（按量付费）或 tp-… / ttp-…（Token Plan）"
-              onChange={(e) => onChange({ ...value, api_key: e.currentTarget.value })}
-            />
-            <button className={btnGhost} onClick={() => setShowKey(!showKey)}>
-              {showKey ? "隐藏" : "显示"}
-            </button>
-          </div>
-        </label>
-        <label className="block text-xs text-slate-500">
-          API Base URL
+          接口地址
           <input
             className={`mt-1 ${input}`}
             value={value.base_url}
-            placeholder="按密钥类型自动选择，可手动覆盖"
+            placeholder={addressPlaceholder}
             onChange={(e) => onChange({ ...value, base_url: e.currentTarget.value })}
           />
         </label>
-        <label className="block text-xs text-slate-500">
-          模型名
-          <input
-            className={`mt-1 ${input}`}
-            value={value.model}
-            onChange={(e) => onChange({ ...value, model: e.currentTarget.value })}
-          />
-        </label>
+        {showModel && (
+          <label className="block text-xs text-slate-500">
+            模型名
+            <input
+              className={`mt-1 ${input}`}
+              value={value.model}
+              placeholder="留空则用默认模型名"
+              onChange={(e) => onChange({ ...value, model: e.currentTarget.value })}
+            />
+          </label>
+        )}
         <button className={btnGhost} onClick={onTest}>
           测试连接
         </button>
@@ -88,12 +105,26 @@ export function SettingsPage() {
     refreshDevices();
   }, [refreshDevices]);
 
+  // 切换识别引擎：FunASR 只换识别，总结保持小米 MiMo
   const setProvider = (provider: ProviderKind) => {
+    const asrBaseUrl = isKnownBaseUrl(settings.asr.base_url)
+      ? provider === "funasr"
+        ? FUNASR_BASE_URL
+        : resolveBaseUrl(settings.asr.api_key)
+      : settings.asr.base_url;
+    // 切回 MiMo 时补上默认模型名，避免空模型名请求失败
+    const asrModel =
+      provider === "mimo" && settings.asr.model.trim().length === 0
+        ? "mimo-v2.5-asr"
+        : settings.asr.model;
     update(
       {
         ...settings,
-        asr: { ...settings.asr, provider },
-        summarizer: { ...settings.summarizer, provider },
+        asr: { ...settings.asr, provider, base_url: asrBaseUrl, model: asrModel },
+        summarizer: {
+          ...settings.summarizer,
+          provider: provider === "funasr" ? "mimo" : provider,
+        },
       },
       { persist: false },
     );
@@ -118,7 +149,7 @@ export function SettingsPage() {
   const handleTest = async (kind: "asr" | "summarizer") => {
     try {
       const result = await ipc.testProviderConnection(kind);
-      setMessage(`${kind === "asr" ? "ASR" : "总结"}：${result.message}`);
+      setMessage(`${kind === "asr" ? "识别" : "总结"}：${result.message}`);
     } catch (err) {
       setMessage(formatError(err));
     }
@@ -126,10 +157,12 @@ export function SettingsPage() {
 
   const handleReset = () => {
     update(DEFAULT_SETTINGS);
-    setMessage("已恢复默认（API Key 已清空）");
+    setMessage("已恢复默认");
   };
 
-  const isMock = settings.asr.provider === "mock";
+  const provider = settings.asr.provider;
+  const isMock = provider === "mock";
+  const isFunasr = provider === "funasr";
   const choice = (active: boolean) =>
     `rounded-lg px-4 py-2 text-sm ${
       active
@@ -140,14 +173,17 @@ export function SettingsPage() {
   return (
     <div className="mx-auto max-w-3xl space-y-4 px-6 py-6">
       <div className="rounded-lg bg-indigo-50 px-4 py-3 text-sm text-indigo-700">
-        目前仅支持小米 MiMo API（按量付费 sk- 开头 / Token Plan tp-、ttp- 开头）。每位使用者请填写自己的
-        API 密钥，密钥只保存在本机，不会上传。
+        语音识别支持 <b>FunASR 本地</b>（推荐，免费）与 <b>小米 MiMo</b>（云端）；知识点总结使用小米
+        MiMo v2.6 flash，需在下方填自己的 API 密钥。密钥只保存在本机，不会上传。
       </div>
 
       <div className="rounded-xl border border-slate-200 bg-white p-5">
         <h3 className="text-sm font-semibold text-slate-800">识别引擎</h3>
         <div className="mt-3 flex gap-2">
-          <button className={choice(!isMock)} onClick={() => setProvider("mimo")}>
+          <button className={choice(isFunasr)} onClick={() => setProvider("funasr")}>
+            FunASR 本地
+          </button>
+          <button className={choice(provider === "mimo")} onClick={() => setProvider("mimo")}>
             小米 MiMo
           </button>
           <button className={choice(isMock)} onClick={() => setProvider("mock")}>
@@ -155,11 +191,40 @@ export function SettingsPage() {
           </button>
         </div>
         <p className="mt-2 text-xs text-slate-500">
-          {isMock
-            ? "演示模式：不需要密钥，用于体验完整流程。"
-            : "使用小米 MiMo 云端 API，请填写下方密钥。"}
+          {isFunasr
+            ? "使用本机/局域网部署的 FunASR 服务转写，不消耗云端额度。"
+            : provider === "mimo"
+              ? "使用小米 MiMo 云端 API 转写（按量或 Token Plan 计费）。"
+              : "演示模式：不需要密钥，用于体验完整流程。"}
         </p>
       </div>
+
+      {!isMock && (
+        <>
+          <ProviderSection
+            title={isFunasr ? "语音识别（FunASR 本地）" : "语音识别（小米 MiMo v2.5 ASR）"}
+            hint="上课时把老师讲话实时转成文字"
+            value={settings.asr}
+            onChange={(next) => changeProvider("asr", next)}
+            onTest={() => handleTest("asr")}
+            showApiKey={!isFunasr}
+            showModel={!isFunasr}
+            addressPlaceholder={
+              isFunasr ? "ws://localhost:10096" : "按密钥类型自动选择，可手动覆盖"
+            }
+          />
+          <ProviderSection
+            title="知识点总结（小米 MiMo v2.6 flash）"
+            hint="下课后自动生成本节课的知识点总结"
+            value={settings.summarizer}
+            onChange={(next) => changeProvider("summarizer", next)}
+            onTest={() => handleTest("summarizer")}
+            showApiKey
+            showModel
+            addressPlaceholder="按密钥类型自动选择，可手动覆盖"
+          />
+        </>
+      )}
 
       <div className="rounded-xl border border-slate-200 bg-white p-5">
         <h3 className="text-sm font-semibold text-slate-800">点关闭按钮时</h3>
@@ -220,25 +285,6 @@ export function SettingsPage() {
           刷新设备列表
         </button>
       </div>
-
-      {!isMock && (
-        <>
-          <ProviderSection
-            title="语音识别（小米 MiMo v2.5 ASR）"
-            hint="上课时把老师讲话实时转成文字"
-            value={settings.asr}
-            onChange={(next) => changeProvider("asr", next)}
-            onTest={() => handleTest("asr")}
-          />
-          <ProviderSection
-            title="知识点总结（小米 MiMo v2.6 flash）"
-            hint="下课后自动生成本节课的知识点总结"
-            value={settings.summarizer}
-            onChange={(next) => changeProvider("summarizer", next)}
-            onTest={() => handleTest("summarizer")}
-          />
-        </>
-      )}
 
       <div className="flex items-center gap-3">
         <button className={btn} onClick={handleSave} disabled={loading}>

@@ -76,7 +76,10 @@ mod tests {
         let store = ConfigStore::new(&path);
         let settings = store.load();
         assert!(settings.asr.api_key.is_empty());
-        assert_eq!(settings.asr.model, "mimo-v2.5-asr");
+        // 识别默认本地 FunASR，总结默认小米 MiMo
+        assert_eq!(settings.asr.provider, crate::domain::settings::ProviderKind::Funasr);
+        assert_eq!(settings.asr.base_url, crate::domain::settings::FUNASR_BASE_URL);
+        assert_eq!(settings.summarizer.model, "mimo-v2.6-flash");
     }
 
     #[test]

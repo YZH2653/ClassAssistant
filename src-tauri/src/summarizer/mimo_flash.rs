@@ -77,8 +77,16 @@ impl SummarizerProvider for MimoFlashSummarizer {
     }
 }
 
+// 默认总结模型名
+pub const DEFAULT_SUMMARY_MODEL: &str = "mimo-v2.6-flash";
+
 // 构造总结请求体（thinking 两档：enabled / disabled）
 pub fn build_summary_body(model: &str, req: &SummaryRequest, thinking: bool) -> serde_json::Value {
+    let model = if model.trim().is_empty() {
+        DEFAULT_SUMMARY_MODEL
+    } else {
+        model.trim()
+    };
     serde_json::json!({
         "model": model,
         "messages": [

@@ -43,7 +43,15 @@ pub async fn start_class(
     if settings.asr.provider == ProviderKind::Mimo && settings.asr.api_key.trim().is_empty() {
         return Err(AppError::new(
             ErrorScope::Session,
-            "请先在设置页配置 MiMo API 密钥",
+            "请先在设置页配置识别用的小米 MiMo API 密钥",
+        ));
+    }
+    if settings.summarizer.provider == ProviderKind::Mimo
+        && settings.summarizer.api_key.trim().is_empty()
+    {
+        return Err(AppError::new(
+            ErrorScope::Session,
+            "请先在设置页配置总结用的小米 MiMo API 密钥",
         ));
     }
     let options = crate::audio::CaptureOptions {
@@ -124,13 +132,41 @@ pub async fn test_provider_connection(
             })
         }
     };
-    Ok(match config.provider {
+    // 总结没有 FunASR 实现，与 Provider 工厂一致回退到 MiMo
+    let is_summary = kind.as_str() == "summarizer";
+    let provider = if is_summary && config.provider == ProviderKind::Funasr {
+        ProviderKind::Mimo
+    } else {
+        config.provider
+    };
+    Ok(match provider {
         ProviderKind::Mock => TestResult {
             ok: true,
             message: "Mock 连接正常".to_string(),
         },
         ProviderKind::Mimo => probe_mimo(&config).await,
+        ProviderKind::Funasr => probe_funasr(&config).await,
     })
+}
+
+// 探测 FunASR 服务连通性
+async fn probe_funasr(config: &crate::domain::settings::ProviderConfig) -> TestResult {
+    let trimmed = config.base_url.trim().trim_end_matches('/');
+    let url = if trimmed.is_empty() {
+        crate::domain::settings::FUNASR_BASE_URL
+    } else {
+        trimmed
+    };
+    match crate::asr::funasr::probe(url).await {
+        Ok(()) => TestResult {
+            ok: true,
+            message: "FunASR 服务连接正常".to_string(),
+        },
+        Err(err) => TestResult {
+            ok: false,
+            message: err.0,
+        },
+    }
 }
 
 // 探测 MiMo 接口连通性
@@ -141,6 +177,12 @@ async fn probe_mimo(config: &crate::domain::settings::ProviderConfig) -> TestRes
             ok: false,
             message: "请先填写 API Key".to_string(),
         };
+    }
+    // 本地 FunASR 地址不属于 MiMo，清空后按密钥推导
+    let mut config = config.clone();
+    let url = config.base_url.trim().to_string();
+    if url.starts_with("ws://") || url.starts_with("wss://") {
+        config.base_url = String::new();
     }
     let base_url = config.effective_base_url();
     let client = match reqwest::Client::builder()

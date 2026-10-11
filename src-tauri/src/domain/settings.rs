@@ -1,5 +1,5 @@
 // API 配置模型（与前端 src/types/settings.ts 镜像）
-// 目前仅支持小米 MiMo API
+// 识别支持 FunASR 本地与小米 MiMo；总结仅小米 MiMo
 use serde::{Deserialize, Serialize};
 
 // Provider 类型
@@ -7,8 +7,9 @@ use serde::{Deserialize, Serialize};
 #[serde(rename_all = "snake_case")]
 pub enum ProviderKind {
     Mock,
-    #[default]
     Mimo,
+    #[default]
+    Funasr,
 }
 
 // 单个 Provider 配置
@@ -36,6 +37,8 @@ impl Default for ProviderConfig {
 pub const PAY_AS_YOU_GO_BASE_URL: &str = "https://api.xiaomimimo.com/v1";
 // Token Plan 接口地址
 pub const TOKEN_PLAN_BASE_URL: &str = "https://token-plan-cn.xiaomimimo.com/v1";
+// FunASR 本地服务默认地址
+pub const FUNASR_BASE_URL: &str = "ws://localhost:10096";
 
 impl ProviderConfig {
     // 生效的接口地址：非默认地址视为手动指定优先，否则按密钥前缀推断
@@ -150,13 +153,19 @@ mod tests {
 impl Default for AppSettings {
     fn default() -> Self {
         Self {
+            // 识别默认走本地 FunASR
             asr: ProviderConfig {
-                model: "mimo-v2.5-asr".to_string(),
-                ..ProviderConfig::default()
+                provider: ProviderKind::Funasr,
+                api_key: String::new(),
+                base_url: FUNASR_BASE_URL.to_string(),
+                model: String::new(),
             },
+            // 总结默认走小米 MiMo v2.6 flash
             summarizer: ProviderConfig {
+                provider: ProviderKind::Mimo,
+                api_key: String::new(),
+                base_url: PAY_AS_YOU_GO_BASE_URL.to_string(),
                 model: "mimo-v2.6-flash".to_string(),
-                ..ProviderConfig::default()
             },
             thinking: true,
             close_behavior: CloseBehavior::Tray,

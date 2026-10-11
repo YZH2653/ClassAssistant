@@ -499,18 +499,23 @@ async fn run_pipeline(
     let mut last_level = std::time::Instant::now();
 
     let mut finished = false;
+    // 推流失败后不再送音频，但继续把事件送完，避免吞掉错误提示
+    let mut push_failed = false;
     loop {
-        while let Ok(frame) = frames.try_recv() {
-            let peak = crate::audio::peak_of_pcm(&frame.pcm_s16le);
-            if peak > max_peak {
-                max_peak = peak;
-            }
-            if last_level.elapsed().as_millis() >= 200 {
-                last_level = std::time::Instant::now();
-                let _ = cmd_tx.try_send(ManagerCmd::Level { level: peak });
-            }
-            if stream.push_audio(frame).await.is_err() {
-                return;
+        if !push_failed {
+            while let Ok(frame) = frames.try_recv() {
+                let peak = crate::audio::peak_of_pcm(&frame.pcm_s16le);
+                if peak > max_peak {
+                    max_peak = peak;
+                }
+                if last_level.elapsed().as_millis() >= 200 {
+                    last_level = std::time::Instant::now();
+                    let _ = cmd_tx.try_send(ManagerCmd::Level { level: peak });
+                }
+                if stream.push_audio(frame).await.is_err() {
+                    push_failed = true;
+                    break;
+                }
             }
         }
         if !finished && frames.is_closed() {

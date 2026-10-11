@@ -6,6 +6,7 @@ use tauri::menu::{Menu, MenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{App, AppHandle, Manager};
 
+use crate::asr::funasr::FunasrAsrProvider;
 use crate::asr::mimo::MimoAsrProvider;
 use crate::asr::{AsrProvider, MockAsrProvider};
 use crate::audio::cpal_capture::CpalCapture;
@@ -26,22 +27,29 @@ pub struct AppState {
     pub app_version: String,
 }
 
-// 按配置装配 Provider（目前仅支持小米 MiMo 与 mock）
+// 按配置装配 Provider（识别：FunASR 本地 / 小米 MiMo / mock；总结：小米 MiMo / mock）
 pub fn build_providers(settings: &AppSettings) -> Providers {
     let capture: Arc<dyn AudioCapture> = match settings.asr.provider {
         ProviderKind::Mock => Arc::new(MockAudioCapture::default()),
         ProviderKind::Mimo => Arc::new(CpalCapture),
+        ProviderKind::Funasr => Arc::new(CpalCapture),
     };
     let asr: Arc<dyn AsrProvider> = match settings.asr.provider {
         ProviderKind::Mock => Arc::new(MockAsrProvider::default()),
         ProviderKind::Mimo => Arc::new(MimoAsrProvider::new(settings.asr.clone())),
+        ProviderKind::Funasr => Arc::new(FunasrAsrProvider::new(settings.asr.clone())),
     };
     let summarizer: Arc<dyn SummarizerProvider> = match settings.summarizer.provider {
         ProviderKind::Mock => Arc::new(MockSummarizer::default()),
-        ProviderKind::Mimo => Arc::new(MimoFlashSummarizer::new(
-            settings.summarizer.clone(),
-            settings.thinking,
-        )),
+        ProviderKind::Mimo | ProviderKind::Funasr => {
+            // 总结没有 FunASR 实现，回退到小米 MiMo；地址若是本地 WS 则重置，交给密钥推导
+            let mut config = settings.summarizer.clone();
+            let url = config.base_url.trim().to_string();
+            if url.starts_with("ws://") || url.starts_with("wss://") {
+                config.base_url = String::new();
+            }
+            Arc::new(MimoFlashSummarizer::new(config, settings.thinking))
+        }
     };
     Providers {
         capture,

@@ -1,4 +1,5 @@
 // 语音识别抽象
+pub mod funasr;
 pub mod mimo;
 pub mod wav;
 

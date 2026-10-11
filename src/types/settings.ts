@@ -1,5 +1,5 @@
 // API 配置类型（与 Rust domain::settings 镜像）
-export type ProviderKind = "mock" | "mimo";
+export type ProviderKind = "mock" | "mimo" | "funasr";
 
 export interface ProviderConfig {
   provider: ProviderKind;
@@ -28,13 +28,13 @@ export interface TestResult {
   message: string;
 }
 
-// 默认配置（仅支持小米 MiMo API）
+// 默认配置：识别走本地 FunASR，总结走小米 MiMo v2.6 flash
 export const DEFAULT_SETTINGS: AppSettings = {
   asr: {
-    provider: "mimo",
+    provider: "funasr",
     api_key: "",
-    base_url: "https://api.xiaomimimo.com/v1",
-    model: "mimo-v2.5-asr",
+    base_url: "ws://localhost:10096",
+    model: "",
   },
   summarizer: {
     provider: "mimo",
