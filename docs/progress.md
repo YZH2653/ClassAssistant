@@ -46,12 +46,14 @@
 | 2026-10-11 | 测试包 | `npm run tauri build` 打 v1.1.0.0 测试包到 output/（绿色版 + 安装版 + 测试 zip） | `98b0c45` |
 | 2026-10-11 | v1.1.0.0 | 修复 FunASR 握手子协议回显依赖（tungstenite 0.26 校验 vs WebSocket++ 不回显；先不声明子协议、遇回显自动重连，含假服务端回归测试） | `eab1c71` |
 | 2026-10-11 | v1.1.0.0 | 新增「留存最近一次总结」（复位误触后仍可复制，last_summary.md 持久化 + 空闲态展示） | `2bb5d08` |
-| 2026-10-11 | 测试包 2 号 | `npm run tauri build` 打 `ClassAssistant-v1.1.0.0-test2.zip`（含握手修复 + 留存总结），交涵涵拷去 Redmi 测试 | 本提交 |
+| 2026-10-11 | 测试包 2 号 | `npm run tauri build` 打 `ClassAssistant-v1.1.0.0-test2.zip`（含握手修复 + 留存总结），交涵涵拷去 Redmi 测试 | `913a8ec` |
+| 2026-10-11 | v1.1.0.0 | 发版前复核修正（留存误导文案、子协议诊断信息、验收时序 4~8 秒，50 测试全绿） | `84c1563` |
+| 2026-10-11 | 15 | **发布 v1.1.0.0**：合并 main、打 tag、打包 `ClassAssistant-v1.1.0.0-win-x64.zip`（安装版 + 绿色版 + 使用说明）到 output/ | 本提交 |
 
 ## 三、进行中事项
 
-- **v1.0.0.0 已发布**（2026-09-27）：合并 main、打 tag、打包产物到 `output/`（zip + 安装版）
-- 待办：远程 tag `v1.0.0.0` 指向版本号修正前的提交，需涵涵决定是否 force 更新 tag
+- **v1.1.0.0 已发布**（2026-10-11）：合并 main、打 tag、打包 `ClassAssistant-v1.1.0.0-win-x64.zip` 到 `output/`，待涵涵上传 GitHub Releases
+- v1.0.0.0 已发布（2026-09-27）
 
 ## 四、待办事项 TODO
 
