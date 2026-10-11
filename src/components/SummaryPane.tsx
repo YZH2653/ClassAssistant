@@ -43,7 +43,7 @@ export function SummaryPane({
       <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3">
         <h2 className="text-sm font-semibold text-slate-700">
           知识点总结
-          {retained && <span className="ml-2 text-xs font-normal text-slate-400">最近一次</span>}
+          {retained && <span className="ml-2 text-xs font-normal text-slate-400">留存 · 非本节</span>}
         </h2>
         <button
           className="rounded-lg border border-slate-200 px-2.5 py-1 text-xs text-slate-600 hover:bg-slate-50 disabled:cursor-not-allowed disabled:text-slate-300"
@@ -65,7 +65,9 @@ export function SummaryPane({
         {summaryMarkdown && <pre className="whitespace-pre-wrap font-sans">{summaryMarkdown}</pre>}
         {retained && (
           <div>
-            <p className="mb-2 text-xs text-slate-400">复位前的最近一次总结，点「复制」可取回。</p>
+            <p className="mb-2 text-xs text-slate-400">
+              以下为上一次生成成功的总结（留存副本），并非本节课总结，点「复制」可取回。
+            </p>
             <pre className="whitespace-pre-wrap font-sans text-slate-600">{retained}</pre>
           </div>
         )}

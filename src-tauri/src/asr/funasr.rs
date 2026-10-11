@@ -84,16 +84,21 @@ fn is_subprotocol_error(e: &tokio_tungstenite::tungstenite::Error) -> bool {
 // 连接服务：先不声明子协议（RFC 6455 允许服务端不回显，FunASR 即如此）；
 // 若对端回显了子协议（部署侧回显代理场景）则改带 binary 重连一次
 async fn connect_ws(url: &str) -> Result<WsStream, AsrError> {
-    let fail = |_| {
-        AsrError("无法连接 FunASR 服务，请确认部署机已启动（D:\\FunASR\\start.bat）".to_string())
+    const FAIL: &str = "无法连接 FunASR 服务，请确认部署机已启动（D:\\FunASR\\start.bat）";
+    let first = match connect_async(build_request(url, false)?).await {
+        Ok((ws, _)) => return Ok(ws),
+        Err(e) if is_subprotocol_error(&e) => e,
+        Err(e) => return Err(AsrError(format!("{FAIL}（{e}）"))),
     };
-    match connect_async(build_request(url, false)?).await {
+    // 首连因子协议协商失败（对端回显了子协议）：带 binary 重连一次
+    match connect_async(build_request(url, true)?).await {
         Ok((ws, _)) => Ok(ws),
-        Err(e) if is_subprotocol_error(&e) => {
-            let (ws, _) = connect_async(build_request(url, true)?).await.map_err(fail)?;
-            Ok(ws)
-        }
-        Err(e) => Err(fail(e)),
+        Err(second) if is_subprotocol_error(&second) => Err(AsrError(format!(
+            "FunASR 子协议协商不匹配（对端回显非 binary）：{second}（首连：{first}）"
+        ))),
+        Err(second) => Err(AsrError(format!(
+            "{FAIL}（重连失败：{second}；首连：{first}）"
+        ))),
     }
 }
 
@@ -466,9 +471,10 @@ mod tests {
         );
     }
 
-    // 起一个最小假 WebSocket 服务端：完成101握手即挂起（echo_subprotocol 控制是否回显 binary），返回 ws URL
-    async fn spawn_fake_ws_server(echo_subprotocol: bool) -> String {
+    // 起一个最小假 WebSocket 服务端：完成101握手即挂起（echo 控制回显的子协议名），返回 ws URL
+    async fn spawn_fake_ws_server(echo: Option<&str>) -> String {
         use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        let echo = echo.map(|s| s.to_string());
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let url = format!("ws://127.0.0.1:{}", listener.local_addr().unwrap().port());
         tokio::spawn(async move {
@@ -476,6 +482,7 @@ mod tests {
                 let Ok((mut sock, _)) = listener.accept().await else {
                     break;
                 };
+                let echo = echo.clone();
                 tokio::spawn(async move {
                     let mut buf = Vec::new();
                     let mut tmp = [0u8; 1024];
@@ -511,8 +518,8 @@ mod tests {
                          Connection: Upgrade\r\n\
                          Sec-WebSocket-Accept: {accept}\r\n"
                     );
-                    if echo_subprotocol {
-                        resp.push_str("Sec-WebSocket-Protocol: binary\r\n");
+                    if let Some(name) = &echo {
+                        resp.push_str(&format!("Sec-WebSocket-Protocol: {name}\r\n"));
                     }
                     resp.push_str("\r\n");
                     let _ = sock.write_all(resp.as_bytes()).await;
@@ -526,13 +533,25 @@ mod tests {
 
     #[tokio::test]
     async fn connects_when_server_omits_subprotocol_echo() {
-        let url = spawn_fake_ws_server(false).await;
+        let url = spawn_fake_ws_server(None).await;
         probe(&url).await.expect("无子协议回显也应连通（RFC 允许）");
     }
 
     #[tokio::test]
     async fn connects_when_server_echoes_subprotocol() {
-        let url = spawn_fake_ws_server(true).await;
+        let url = spawn_fake_ws_server(Some("binary")).await;
         probe(&url).await.expect("回显代理场景应自动重连连通");
+    }
+
+    #[tokio::test]
+    async fn mismatched_subprotocol_echo_reports_diagnosis() {
+        let url = spawn_fake_ws_server(Some("chat")).await;
+        let err = probe(&url).await.unwrap_err();
+        assert!(
+            err.0.contains("子协议协商不匹配"),
+            "错误应含子协议诊断信息：{}",
+            err.0
+        );
+        assert!(err.0.contains("首连"), "错误应含首连失败原因：{}", err.0);
     }
 }
