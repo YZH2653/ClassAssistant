@@ -98,6 +98,15 @@ pub fn get_settings(state: State<'_, AppState>) -> AppSettings {
     state.config_store.load()
 }
 
+// 最近一次总结（复位误触后仍可复制）
+#[tauri::command]
+pub fn get_last_summary(state: State<'_, AppState>) -> Result<Option<String>, AppError> {
+    state
+        .store
+        .read_last_summary()
+        .map_err(|e| AppError::new(ErrorScope::Storage, e.0))
+}
+
 #[tauri::command]
 pub fn save_settings(
     state: State<'_, AppState>,

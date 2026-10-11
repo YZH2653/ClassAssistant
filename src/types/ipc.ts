@@ -8,6 +8,7 @@ export const CMD = {
   RevealDataDir: "reveal_data_dir",
   GetSettings: "get_settings",
   SaveSettings: "save_settings",
+  GetLastSummary: "get_last_summary",
   TestProviderConnection: "test_provider_connection",
   ListInputDevices: "list_input_devices",
 } as const;

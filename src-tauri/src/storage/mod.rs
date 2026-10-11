@@ -34,4 +34,7 @@ pub trait SessionStore: Send + Sync {
     fn flush(&self, id: &str) -> Result<(), StoreError>;
     fn write_summary(&self, id: &str, markdown: &str) -> Result<(), StoreError>;
     fn write_meta(&self, meta: &SessionMeta) -> Result<(), StoreError>;
+    // 最近一次总结（复位后仍可复制）
+    fn write_last_summary(&self, markdown: &str) -> Result<(), StoreError>;
+    fn read_last_summary(&self) -> Result<Option<String>, StoreError>;
 }

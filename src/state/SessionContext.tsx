@@ -9,6 +9,8 @@ export interface UiState {
   partial: string | null;
   summaryMarkdown: string | null;
   summaryStage: string | null;
+  // 最近一次总结（复位误触后仍可复制，RESET 不清）
+  lastSummary: string | null;
   // 麦克风电平 0.0 ~ 1.0
   level: number;
   error: string | null;
@@ -23,6 +25,7 @@ export type UiAction =
   | { type: "SET_PARTIAL"; text: string | null }
   | { type: "SET_SUMMARY"; markdown: string | null }
   | { type: "SET_SUMMARY_STAGE"; stage: string | null }
+  | { type: "SET_LAST_SUMMARY"; markdown: string | null }
   | { type: "SET_LEVEL"; level: number }
   | { type: "SET_ERROR"; error: string | null }
   | { type: "RESET" };
@@ -34,6 +37,7 @@ export const initialUiState: UiState = {
   partial: null,
   summaryMarkdown: null,
   summaryStage: null,
+  lastSummary: null,
   level: 0,
   error: null,
   dataDir: null,
@@ -52,15 +56,23 @@ function uiReducer(state: UiState, action: UiAction): UiState {
     case "SET_PARTIAL":
       return { ...state, partial: action.text };
     case "SET_SUMMARY":
-      return { ...state, summaryMarkdown: action.markdown };
+      return {
+        ...state,
+        summaryMarkdown: action.markdown,
+        // 新总结生成即更新留存
+        lastSummary: action.markdown ?? state.lastSummary,
+      };
     case "SET_SUMMARY_STAGE":
       return { ...state, summaryStage: action.stage };
+    case "SET_LAST_SUMMARY":
+      return { ...state, lastSummary: action.markdown };
     case "SET_LEVEL":
       return { ...state, level: action.level };
     case "SET_ERROR":
       return { ...state, error: action.error };
     case "RESET":
-      return initialUiState;
+      // 清空本次会话内容，但保留最近一次总结
+      return { ...initialUiState, lastSummary: state.lastSummary };
     default:
       return state;
   }

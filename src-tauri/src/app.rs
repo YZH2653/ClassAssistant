@@ -25,6 +25,7 @@ pub struct AppState {
     pub providers: SharedProviders,
     pub data_dir: PathBuf,
     pub app_version: String,
+    pub store: Arc<dyn crate::storage::SessionStore>,
 }
 
 // 按配置装配 Provider（识别：FunASR 本地 / 小米 MiMo / mock；总结：小米 MiMo / mock）
@@ -66,10 +67,10 @@ pub fn setup(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
     let config_store = ConfigStore::new(data_dir.join("config.json"));
     let settings = config_store.load();
     let providers: SharedProviders = Arc::new(RwLock::new(Arc::new(build_providers(&settings))));
-    let store = Arc::new(FsSessionStore::new(&data_dir));
+    let store: Arc<dyn crate::storage::SessionStore> = Arc::new(FsSessionStore::new(&data_dir));
 
     let (sink, mut events) = tokio::sync::mpsc::unbounded_channel();
-    let (manager, actor) = SessionManager::create(providers.clone(), store, sink);
+    let (manager, actor) = SessionManager::create(providers.clone(), store.clone(), sink);
     tauri::async_runtime::spawn(actor);
 
     let handle = app.handle().clone();
@@ -85,6 +86,7 @@ pub fn setup(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
         providers,
         data_dir,
         app_version: env!("CARGO_PKG_VERSION").to_string(),
+        store,
     });
     Ok(())
 }

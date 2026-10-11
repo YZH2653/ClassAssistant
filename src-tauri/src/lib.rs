@@ -48,6 +48,7 @@ pub fn run() {
             ipc::commands::reveal_data_dir,
             ipc::commands::get_settings,
             ipc::commands::save_settings,
+            ipc::commands::get_last_summary,
             ipc::commands::test_provider_connection,
             ipc::commands::list_input_devices,
         ])

@@ -119,6 +119,21 @@ impl SessionStore for FsSessionStore {
         fs::create_dir_all(self.session_dir(&meta.id)).map_err(|e| io_err(&path, e))?;
         fs::write(&path, json).map_err(|e| io_err(&path, e))
     }
+
+    fn write_last_summary(&self, markdown: &str) -> Result<(), StoreError> {
+        let path = self.root.join("last_summary.md");
+        fs::write(&path, markdown).map_err(|e| io_err(&path, e))
+    }
+
+    fn read_last_summary(&self) -> Result<Option<String>, StoreError> {
+        let path = self.root.join("last_summary.md");
+        match fs::read_to_string(&path) {
+            Ok(text) if !text.trim().is_empty() => Ok(Some(text)),
+            Ok(_) => Ok(None),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
+            Err(e) => Err(io_err(&path, e)),
+        }
+    }
 }
 
 #[cfg(test)]
@@ -227,6 +242,22 @@ mod tests {
         store.write_summary(id, "## 知识点\n- 顺序表\n").unwrap();
         let content = fs::read_to_string(store.session_dir(id).join("summary.md")).unwrap();
         assert!(content.contains("顺序表"));
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn last_summary_round_trip() {
+        let root = temp_root();
+        let store = FsSessionStore::new(&root);
+        // 无留存时返回 None
+        assert_eq!(store.read_last_summary().unwrap(), None);
+        store.write_last_summary("## 知识点\n- 最近一次\n").unwrap();
+        let text = store.read_last_summary().unwrap();
+        assert!(text.unwrap().contains("最近一次"));
+        // 覆盖写
+        store.write_last_summary("## 知识点\n- 更新后\n").unwrap();
+        let text = store.read_last_summary().unwrap();
+        assert!(text.unwrap().contains("更新后"));
         let _ = fs::remove_dir_all(&root);
     }
 }

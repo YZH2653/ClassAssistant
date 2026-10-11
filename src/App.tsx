@@ -38,7 +38,7 @@ export default function App() {
 
   useSessionEvents();
 
-  // 首次启动未配置 API 时引导进入设置页
+  // 首次启动未配置 API 时引导进入设置页；加载最近一次总结
   useEffect(() => {
     ipc
       .getSettings()
@@ -47,6 +47,14 @@ export default function App() {
         if (missing) {
           setView("settings");
           dispatch({ type: "SET_ERROR", error: missing });
+        }
+      })
+      .catch(() => {});
+    ipc
+      .getLastSummary()
+      .then((markdown) => {
+        if (markdown) {
+          dispatch({ type: "SET_LAST_SUMMARY", markdown });
         }
       })
       .catch(() => {});
@@ -135,6 +143,7 @@ export default function App() {
                 status={state.status}
                 summaryMarkdown={state.summaryMarkdown}
                 summaryStage={state.summaryStage}
+                lastSummary={state.lastSummary}
               />
             </div>
           </>

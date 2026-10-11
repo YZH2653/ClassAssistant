@@ -488,6 +488,10 @@ impl Actor {
                 if let Err(e) = self.store.write_summary(&id, &res.markdown) {
                     self.emit_error(ErrorScope::Storage, e.0);
                 }
+                // 留存最近一次总结（复位误触后仍可复制）
+                if let Err(e) = self.store.write_last_summary(&res.markdown) {
+                    self.emit_error(ErrorScope::Storage, e.0);
+                }
                 if let Err(e) = self.store.write_meta(&meta) {
                     self.emit_error(ErrorScope::Storage, e.0);
                 }

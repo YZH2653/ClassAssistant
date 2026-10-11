@@ -6,6 +6,7 @@ interface SummaryPaneProps {
   status: SessionStatus;
   summaryMarkdown: string | null;
   summaryStage: string | null;
+  lastSummary: string | null;
 }
 
 const STAGE_LABEL: Record<string, string> = {
@@ -14,13 +15,22 @@ const STAGE_LABEL: Record<string, string> = {
   saving: "保存中",
 };
 
-export function SummaryPane({ status, summaryMarkdown, summaryStage }: SummaryPaneProps) {
+export function SummaryPane({
+  status,
+  summaryMarkdown,
+  summaryStage,
+  lastSummary,
+}: SummaryPaneProps) {
   const [copied, setCopied] = useState(false);
 
+  // 空闲且无本节总结时展示留存（复位误触后仍可复制）
+  const retained = status === "idle" && !summaryMarkdown ? lastSummary : null;
+  const copyable = summaryMarkdown ?? retained;
+
   const handleCopy = async () => {
-    if (!summaryMarkdown) return;
+    if (!copyable) return;
     try {
-      await navigator.clipboard.writeText(summaryMarkdown);
+      await navigator.clipboard.writeText(copyable);
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
     } catch {
@@ -31,11 +41,14 @@ export function SummaryPane({ status, summaryMarkdown, summaryStage }: SummaryPa
   return (
     <section className="flex min-h-0 flex-col rounded-xl border border-slate-200 bg-white">
       <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3">
-        <h2 className="text-sm font-semibold text-slate-700">知识点总结</h2>
+        <h2 className="text-sm font-semibold text-slate-700">
+          知识点总结
+          {retained && <span className="ml-2 text-xs font-normal text-slate-400">最近一次</span>}
+        </h2>
         <button
           className="rounded-lg border border-slate-200 px-2.5 py-1 text-xs text-slate-600 hover:bg-slate-50 disabled:cursor-not-allowed disabled:text-slate-300"
           onClick={handleCopy}
-          disabled={!summaryMarkdown}
+          disabled={!copyable}
         >
           {copied ? "已复制" : "复制"}
         </button>
@@ -46,10 +59,16 @@ export function SummaryPane({ status, summaryMarkdown, summaryStage }: SummaryPa
             {summaryStage ? `${STAGE_LABEL[summaryStage] ?? summaryStage}中…` : "生成总结中…"}
           </p>
         )}
-        {!summaryMarkdown && status !== "summarizing" && (
+        {!summaryMarkdown && !retained && status !== "summarizing" && (
           <p className="text-slate-400">下课后自动在这里生成本节课的知识点总结。</p>
         )}
         {summaryMarkdown && <pre className="whitespace-pre-wrap font-sans">{summaryMarkdown}</pre>}
+        {retained && (
+          <div>
+            <p className="mb-2 text-xs text-slate-400">复位前的最近一次总结，点「复制」可取回。</p>
+            <pre className="whitespace-pre-wrap font-sans text-slate-600">{retained}</pre>
+          </div>
+        )}
       </div>
     </section>
   );

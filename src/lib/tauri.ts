@@ -39,6 +39,10 @@ export function getSettings(): Promise<AppSettings> {
   return invoke(CMD.GetSettings);
 }
 
+export function getLastSummary(): Promise<string | null> {
+  return invoke(CMD.GetLastSummary);
+}
+
 export function saveSettings(settings: AppSettings): Promise<void> {
   return invoke(CMD.SaveSettings, { settings });
 }
